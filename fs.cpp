@@ -16,6 +16,12 @@ int
 FS::format()
 {
     std::cout << "FS::format()\n";
+    uint8_t FAT[4096] = {0};
+
+    unsigned int block_no = 1;
+    Disk disk;
+    disk.write(block_no, FAT);
+
     return 0;
 }
 
@@ -25,6 +31,9 @@ int
 FS::create(std::string filepath)
 {
     std::cout << "FS::create(" << filepath << ")\n";
+
+
+
     return 0;
 }
 
