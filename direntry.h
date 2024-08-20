@@ -5,3 +5,4 @@ struct dir_entry {
     uint8_t type; // directory (1) or file (0)
     uint8_t access_rights; // read (0x04), write (0x02), execute (0x01)
 };
+// Size 64
