@@ -20,13 +20,37 @@ FS::format()
 {
     std::cout << "FS::format()\n";
 
+    Disk disk;
+
+    // Create root directory.
+    uint8_t block[4096] = {0};
+
+    dir_entry file;
+    std::string filename = "root";
+    filename.copy(file.file_name, sizeof(file.file_name));
+    file.size = 0;
+    file.first_blk = 0;
+    file.type = 1;
+    file.access_rights = 0x06;
+
+    uint8_t* attributes = reinterpret_cast<uint8_t*>(&file);
+
+    for (int i = 0; i < sizeof(file); i++) {
+        block[i] = attributes[i];
+    }
+
+    // Write root to disk
+    disk.write(0, block);
+
     // Init FAT and mark all as free by EOF.
-    uint8_t FAT[4096] = {0}; // TODO: EOF?
+    uint8_t FAT[4096] = {0};
+    FAT[0] = 255;
+    FAT[1] = 255;
+    FAT[2] = 255;
+    FAT[3] = 255;
 
     // Write FAT to disk.
-    Disk disk;
-    unsigned int block_no = 1;
-    disk.write(block_no, FAT);
+    disk.write(1, FAT);
 
     return 0;
 }
@@ -40,12 +64,50 @@ FS::create(std::string filepath)
 
     Disk disk;
 
+    // TODO: Check file already exist.
+
     dir_entry file;
+    unsigned short FAT[2048];
+    
     uint8_t block[4096] = {0};
-    int ptr = 0;
+    int ptr = sizeof(file);
+    int block_no;
+    int next_block;
+    
+    // Load FAT
+    disk.read(1, block);
+    
+    // DEBUG
+    // for (int i = 0; i < sizeof(block); i++) {
+    //     if (i < 10) {
+    //         std::cout << i << ": " << (int) block[i] << std::endl;
+    //     }
+    // }
+
+    for (int i = 0; i < sizeof(block)/2; i++) {
+        
+        // DEBUG
+        // if (i < 10) {
+        //     std::cout << i << ": " << (block[i*2] << 8 | block[i*2+1]) << " <- " << (int)block[i*2] << " | " << (int)block[i*2+1] << std::endl;
+        // }
+
+        FAT[i] = block[i*2] << 8 | block[i*2+1];
+    }
+
+    // Find free block by iterating over FAT
+    bool found = false;
+    for (int i = 2; i < sizeof(block)/2 && !found; i++) {
+        if (i != block_no && FAT[i] == 0) {
+            block_no = i;
+            found = true;
+        }
+    }
+    // Return -1 if no free block is found
+    if (found = false) {
+        return -1;
+    }
 
     // Write attributes
-
     filepath.copy(file.file_name, sizeof(file.file_name));
     file.size = 64;
     file.first_blk = 2;
@@ -54,16 +116,16 @@ FS::create(std::string filepath)
 
     uint8_t* attributes = reinterpret_cast<uint8_t*>(&file);
 
-    for (;ptr < sizeof(file); ptr++) {
-        block[ptr] = attributes[ptr];
+    for (int i = 0; i < sizeof(file); i++) {
+        block[i] = attributes[i];
     }
 
     // Read user data by line and track size to handle blocks.
 
     std::string line;
     char c;
-    bool terminate = false;
-    while (!terminate) {
+    bool eof = false;
+    while (!eof) {
         std::getline(std::cin, line);
         std::stringstream linestream(line);
         if (!line.empty()) {
@@ -71,17 +133,61 @@ FS::create(std::string filepath)
                 block[ptr] = (uint8_t)c;
                 ptr++;
             }
+            // TODO: Add new-line per linestream?
         }
         else {
-            terminate = true;
+            eof = true;
         }
+        
+        // Handle multiple blocks
+        if (ptr > sizeof(block)) {
+
+            // Write old block
+            disk.write(block_no, block);
+            FAT[block_no] = next_block;
+            
+            // Find free block by iterating over FAT
+            found = false;
+            for (int i = 2; i < sizeof(block)/2 && !found; i++) {
+                if (i != block_no && FAT[i] == 0) {
+                    next_block = i;
+                    found = true;
+                }
+            }
+            // Return -1 if no free block is found
+            if (found = false) {
+                return -1;
+            }
+
+            // Update FAT
+            FAT[block_no] = next_block;
+            block_no = next_block;
+
+            // Write file attributes to block
+            for (int i = 0; i < sizeof(file); i++) {
+                block[i] = attributes[i];
+            }
+
+            // Reset ptr and continue
+            ptr = sizeof(file);
+        }
+
     }
+    // Write block to disk and update FAT
+    disk.write(block_no, block);
+    FAT[block_no] = -1;
 
-    //uint8_t* data = reinterpret_cast<uint8_t*>(&block);
-
-    disk.write(2, block);
-
-    // Check file already exist.
+    // Write FAT to disk
+    for (int i = 0; i < sizeof(block)/2; i++) {
+        block[i*2] = FAT[i] / 255;
+        block[i*2+1] = FAT[i] % 255;
+        
+        // DEBUG
+        // if (i < 10) {
+        //     std::cout << i << ": " << FAT[i] << " -> " << FAT[i] / 256 << " | " << FAT[i] % 256 << std::endl;
+        // }
+    }
+    disk.write(1, block);
 
     return 0;
 }
@@ -94,28 +200,41 @@ FS::cat(std::string filepath)
 
     Disk disk;
 
-    uint8_t block[4096];
     uint8_t attributes[64];
-    int ptr = 0;
+
+    uint8_t block[4096];
+    int ptr = sizeof(dir_entry);
 
     std::string text;
 
+    // TODO: Get block_no from file name
+    int block_no;
+    
     // Read file content
+    disk.read(block_no, block);
 
-    disk.read(2, block);
-
-    for (;ptr < sizeof(attributes); ptr++) {
-        attributes[ptr] = block[ptr];
+    // Interpret attributes
+    for (int i = 0; i < sizeof(attributes); i++) {
+        attributes[i] = block[i];
     }
-
     dir_entry* file = reinterpret_cast<dir_entry*>(attributes);
 
+    // DEBUG
     std::cout << file->file_name << std::endl;
 
-    for (;ptr < sizeof(block); ptr++) {
-        text += (char)block[ptr];
-    }
+    // TODO: While FAT not EOL / Get next block from FAT
+        // Read text from block
+        for (;ptr < sizeof(block); ptr++) {
+            text += (char)block[ptr];
+        }
 
+        // Read next block from FAT
+
+        // Check if EOL
+
+        // Read block from disk
+
+    // DEBUG
     std::cout << text << std::endl;
 
     return 0;
@@ -126,6 +245,13 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
+
+    Disk disk;
+
+    uint8_t block[4096];
+
+    disk.read(0, block);
+
     return 0;
 }
 
