@@ -74,6 +74,15 @@ void get_direntry(dir_entry** file, uint8_t* block) {
     *file = reinterpret_cast<dir_entry*>(attributes);
 }
 
+void get_direntry(dir_entry** file, uint8_t* block, int ptr) {
+    *file = NULL;
+    uint8_t attributes[64] = {0};
+    for (int i = 0; i < sizeof(dir_entry); i++) {
+        attributes[i] = block[ptr+i];
+    }
+    *file = reinterpret_cast<dir_entry*>(attributes);
+}
+
 void find_file(dir_entry** file, std::string filepath) {
     Disk disk;
     dir_entry* entry = NULL;
@@ -83,11 +92,14 @@ void find_file(dir_entry** file, std::string filepath) {
 
     disk.read(0, block);
     bool found = false;
+
+    // Iterate over direntries
     for (int i = 0; i < sizeof(block) / sizeof(dir_entry) && found != true; i++) {
-        for (int i = 0; i < sizeof(attributes); i++) {
-            attributes[i] = block[i];
-        }
-        entry = reinterpret_cast<dir_entry*>(attributes);
+
+        // Parse direntry
+        get_direntry(&entry, block, 0);
+
+        // Check if needle
         if (std::string(entry->file_name).compare(filepath) == 0) {
             found = true;
             *file = entry;
@@ -103,14 +115,11 @@ int find_free_space(int* position) {
 
     disk.read(0, block);
 
-    // Loop through direntries
+    // Iterate over direntries
     for (int i = 0; i < sizeof(block) / sizeof(dir_entry); i++) {
 
         // Parse direntry
-        for (int j = 0; j < sizeof(attributes); j++) {
-            attributes[j] = block[i*sizeof(dir_entry)+j];
-        }
-        entry = reinterpret_cast<dir_entry*>(attributes);
+        get_direntry(&entry, block, i*sizeof(dir_entry));
 
         // Check if file name empty
         if (entry->file_name[0] == 0) {
