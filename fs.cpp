@@ -72,6 +72,48 @@ void get_direntry(dir_entry** file, uint8_t* block) {
     *file = reinterpret_cast<dir_entry*>(attributes);
 }
 
+void find_file(dir_entry** file, std::string filepath) {
+    Disk disk;
+    dir_entry* entry = NULL;
+    *file = NULL;
+    uint8_t block[4096] = {0};
+    uint8_t attributes[64] = {0};
+
+    disk.read(0, block);
+    bool found = false;
+    for (int i = 0; i < sizeof(block) / sizeof(dir_entry) && found != true; i++) {
+        for (int i = 0; i < sizeof(attributes); i++) {
+            attributes[i] = block[i];
+        }
+        entry = reinterpret_cast<dir_entry*>(attributes);
+        if (std::string(entry->file_name).compare(filepath) == 0) {
+            found = true;
+            *file = entry;
+        }
+    }
+}
+
+void find_free_space(int* position) {
+    Disk disk;
+    dir_entry* entry = NULL;
+    uint8_t block[4096] = {0};
+    uint8_t attributes[64] = {0};
+
+    disk.read(0, block);
+    bool found = false;
+    for (int i = 0; i < sizeof(block) / sizeof(dir_entry) && found != true; i++) {
+        for (int i = 0; i < sizeof(attributes); i++) {
+            attributes[i] = block[i];
+        }
+        entry = reinterpret_cast<dir_entry*>(attributes);
+        if (entry->file_name[0] == 0) {
+            found = true;
+            *position = i;
+        }
+    }
+}
+
+
 FS::FS()
 {
     std::cout << "FS::FS()... Creating file system\n";
@@ -217,11 +259,15 @@ FS::create(std::string filepath)
     disk.read(0, block);
 
     // Get free root spot
-    
+    find_free_space(&ptr);
 
     // Put direntry
+    for (int i = 0; i < sizeof(file); i++) {
+        block[ptr*sizeof(dir_entry)+i] = attributes[i];
+    }
 
     // Save root
+    disk.write(0, block);
 
     // Write FAT to disk
     save_fat(&disk, FAT, block);
