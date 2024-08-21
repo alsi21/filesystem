@@ -79,23 +79,23 @@ void put_direntry(dir_entry* file, uint8_t* block, int ptr) {
 }
 
 void get_direntry(dir_entry** file, uint8_t* block, int ptr) {
-    std::cout << "GET DIRENTRY --------------" << std::endl;
-    std::cout << "ptr: " << ptr << std::endl;
+    // std::cout << "GET DIRENTRY --------------" << std::endl;
+    // std::cout << "ptr: " << ptr << std::endl;
     uint8_t attributes[64] = {0};
     for (int i = 0; i < sizeof(dir_entry); i++) {
         attributes[i] = block[ptr+i];
     }
     dir_entry* entry = reinterpret_cast<dir_entry*>(attributes);
-    *file = reinterpret_cast<dir_entry*>(attributes);
-    std::cout << "file: " << entry->file_name << std::endl;
-    std::cout << "block: " << entry->first_blk << std::endl;
-    std::cout << "size: " << entry->size << std::endl;
-    std::cout << "---------------------------" << std::endl;
+    **file = *entry;
+    // std::cout << "file: " << entry->file_name << std::endl;
+    // std::cout << "block: " << entry->first_blk << std::endl;
+    // std::cout << "size: " << entry->size << std::endl;
+    // std::cout << "---------------------------" << std::endl;
 }
 
 void find_file(dir_entry** file, std::string filepath) {
     Disk disk;
-    dir_entry* entry = NULL;
+    dir_entry* entry = new dir_entry;
     *file = NULL;
     uint8_t block[4096] = {0};
     uint8_t attributes[64] = {0};
@@ -110,7 +110,7 @@ void find_file(dir_entry** file, std::string filepath) {
 
         // Check if needle
         if (std::string(entry->file_name).compare(filepath) == 0) {
-            *file = entry;
+            **file = *entry;
             return;
         }
     }
@@ -118,7 +118,7 @@ void find_file(dir_entry** file, std::string filepath) {
 
 int find_free_space(int* ptr) {
     Disk disk;
-    dir_entry* entry = NULL;
+    dir_entry* entry = new dir_entry;
     uint8_t block[4096] = {0};
     uint8_t attributes[64] = {0};
 
@@ -324,7 +324,7 @@ FS::cat(std::string filepath)
 
     Disk disk;
 
-    dir_entry* file;
+    dir_entry* file = new dir_entry;
 
     uint16_t FAT[2048];
 
@@ -394,7 +394,7 @@ FS::ls()
 
     Disk disk;
 
-    dir_entry* file;
+    dir_entry* file = new dir_entry;
     uint8_t block[4096] = {0};
     uint8_t attributes[64] = {0};
 
@@ -410,9 +410,8 @@ FS::ls()
         get_direntry(&file, block, i*sizeof(dir_entry));
 
         // If file exist
-        std::cout << file->file_name << "\t" << file->size << std::endl;
         if (file->file_name[0] != 0) {
-
+            std::cout << file->file_name << "\t" << file->size << std::endl;
         }
 
     }
