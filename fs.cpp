@@ -128,10 +128,9 @@ void get_direntry(dir_entry** file, uint8_t* block, int ptr) {
     // std::cout << "---------------------------" << std::endl;
 }
 
-void find_file(dir_entry** file, std::string filepath) {
+int find_file(dir_entry** file, std::string filepath) {
     Disk disk;
     dir_entry* entry = new dir_entry;
-    *file = NULL;
     uint8_t block[4096] = {0};
     uint8_t attributes[64] = {0};
 
@@ -144,11 +143,12 @@ void find_file(dir_entry** file, std::string filepath) {
         get_direntry(&entry, block, i*DIRENTRY_SIZE);
 
         // Check if needle
-        if (std::string(entry->file_name).compare(filepath) == 0) {
+        if (strcmp(entry->file_name, filepath.c_str()) == 0) {
             **file = *entry;
-            return;
+            return 0;
         }
     }
+    return -1;
 }
 
 int find_free_space(int* ptr) {
@@ -367,7 +367,14 @@ FS::cat(std::string filepath)
     load_fat(FAT, block);
 
     // TODO: Get block_no from file name
-    int block_no = 2;
+
+    int found = find_file(&file, filepath);
+    if (found == -1) {
+        // Handle file not found
+        return -1;
+    }
+
+    int block_no = file->first_blk;
     int next_block;
     
     // Read file from disk
@@ -379,7 +386,8 @@ FS::cat(std::string filepath)
     //     attributes[i] = block[i];
     // }
     // dir_entry* file = reinterpret_cast<dir_entry*>(attributes);
-    get_direntry(&file, block, 0);
+
+    // get_direntry(&file, block, 0);
 
     // Print file name
     std::cout << file->file_name << std::endl;
