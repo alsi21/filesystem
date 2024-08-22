@@ -4,33 +4,50 @@
 #include <string>
 #include "fs.h"
 
+#define BLOCK_SIZE 4096
+#define DIRENTRY_SIZE 64
+
 void load_fat(uint16_t* FAT, uint8_t* block) {
+    
+    // DEBUG
+    // std::cout << "LOAD FAT --------------" << std::endl;
+    // std::cout << BLOCK_SIZE << std::endl;
+    
     Disk disk;
+
     // Load FAT
     disk.read(1, block);
     
     // DEBUG
-    // for (int i = 0; i < sizeof(block); i++) {
+    // for (int i = 0; i < BLOCK_SIZE; i++) {
     //     if (i < 10) {
     //         std::cout << i << ": " << (int) block[i] << std::endl;
     //     }
     // }
 
-    for (int i = 0; i < sizeof(block)/2; i++) {
-        
+    for (int i = 0; i < BLOCK_SIZE/2; i++) {
+
         // DEBUG
         // if (i < 10) {
         //     std::cout << i << ": " << (block[i*2] << 8 | block[i*2+1]) << " <- " << (int)block[i*2] << " | " << (int)block[i*2+1] << std::endl;
         // }
 
         FAT[i] = block[i*2] << 8 | block[i*2+1];
+
+        // DEBUG
+        // std::cout << "i: " << i << " | block_no: " << FAT[i] << std::endl;
     }
 }
 
 void save_fat(uint16_t* FAT, uint8_t* block) {
+    // DEBUG
+    // std::cout << "SAVE FAT --------------" << std::endl;
+    // std::cout << BLOCK_SIZE << std::endl;
+
     Disk disk;
+
     // Write FAT to disk
-    for (int i = 0; i < sizeof(block)/2; i++) {
+    for (int i = 0; i < BLOCK_SIZE/2; i++) {
         block[i*2] = FAT[i] / 256;
         block[i*2+1] = FAT[i] % 256;
         
@@ -41,7 +58,7 @@ void save_fat(uint16_t* FAT, uint8_t* block) {
     }
 
     // DEBUG
-    // for (int i = 0; i < sizeof(block); i++) {
+    // for (int i = 0; i < BLOCK_SIZE; i++) {
     //     if (i < 10) {
     //         std::cout << i << ": " << (int) block[i] << std::endl;
     //     }
@@ -52,41 +69,59 @@ void save_fat(uint16_t* FAT, uint8_t* block) {
 
 int free_block(int* block_no, uint16_t* FAT) {
     // Find free block by iterating over FAT
-    bool found = false;
-    for (int i = 2; i < sizeof(FAT)/2 && !found; i++) {
+
+    // DEBUG
+    // std::cout << "FIND FREE BLOCK --------------" << std::endl;
+    // std::cout << BLOCK_SIZE/2 << std::endl;
+    
+    // Iterate over blocks
+    for (int i = 0; i < BLOCK_SIZE/(2*sizeof(uint16_t)); i++) {
+
+        // DEBUG
+        // std::cout << "i: " << i << " | FAT: " << FAT[i] << std::endl;
+
         if (i != *block_no && FAT[i] == 0) {
+
+            // DEBUG
+            // std::cout << "FOUND BLOCK --------------" << FAT[i] << std::endl;
+
             *block_no = i;
-            found = true;
+            return 0;
         }
     }
     // Return -1 if no free block is found
-    if (found = false) {
-        return -1;
-    }
-    return 0;
+    return -1;
 }
 
 void put_direntry(dir_entry* file, uint8_t* block, int ptr) {
+    
+    // DEBUG
     // std::cout << "PUT DIRENTRY --------------" << std::endl;
     // std::cout << "file: " << file->file_name << std::endl;
     // std::cout << "block: " << file->first_blk << std::endl;
     // std::cout << "size: " << file->size << std::endl;
+
     uint8_t* attributes = reinterpret_cast<uint8_t*>(file);
-    for (int i = 0; i < sizeof(dir_entry); i++) {
+    for (int i = 0; i < DIRENTRY_SIZE; i++) {
         block[ptr+i] = attributes[i];
     }
     // std::cout << "---------------------------" << std::endl;
 }
 
 void get_direntry(dir_entry** file, uint8_t* block, int ptr) {
+    
+    // DEBUG
     // std::cout << "GET DIRENTRY --------------" << std::endl;
     // std::cout << "ptr: " << ptr << std::endl;
+
     uint8_t attributes[64] = {0};
-    for (int i = 0; i < sizeof(dir_entry); i++) {
+    for (int i = 0; i < DIRENTRY_SIZE; i++) {
         attributes[i] = block[ptr+i];
     }
     dir_entry* entry = reinterpret_cast<dir_entry*>(attributes);
     **file = *entry;
+
+    // DEBUG
     // std::cout << "file: " << entry->file_name << std::endl;
     // std::cout << "block: " << entry->first_blk << std::endl;
     // std::cout << "size: " << entry->size << std::endl;
@@ -103,10 +138,10 @@ void find_file(dir_entry** file, std::string filepath) {
     disk.read(0, block);
 
     // Iterate over direntries
-    for (int i = 0; i < sizeof(block) / sizeof(dir_entry); i++) {
+    for (int i = 0; i < BLOCK_SIZE / DIRENTRY_SIZE; i++) {
 
         // Parse direntry
-        get_direntry(&entry, block, i*sizeof(dir_entry));
+        get_direntry(&entry, block, i*DIRENTRY_SIZE);
 
         // Check if needle
         if (std::string(entry->file_name).compare(filepath) == 0) {
@@ -125,10 +160,10 @@ int find_free_space(int* ptr) {
     disk.read(0, block);
 
     // Iterate over direntries
-    for (int i = 0; i < sizeof(block) / sizeof(dir_entry); i++) {
+    for (int i = 0; i < BLOCK_SIZE / DIRENTRY_SIZE; i++) {
 
         // Parse direntry
-        get_direntry(&entry, block, i*sizeof(dir_entry));
+        get_direntry(&entry, block, i*DIRENTRY_SIZE);
 
         // Check if file name empty
         if (entry->file_name[0] == 0) {
@@ -163,7 +198,8 @@ FS::format()
 
     dir_entry file;
     std::string filename = ".";
-    filename.copy(file.file_name, sizeof(file.file_name));
+    strcpy(file.file_name, filename.c_str());
+    // filename.copy(file.file_name, sizeof(file.file_name));
     file.size = 64;
     file.first_blk = 0;
     file.type = 1;
@@ -171,7 +207,7 @@ FS::format()
 
     uint8_t* attributes = reinterpret_cast<uint8_t*>(&file);
 
-    for (int i = 0; i < sizeof(file); i++) {
+    for (int i = 0; i < DIRENTRY_SIZE; i++) {
         block[i] = attributes[i];
     }
 
@@ -203,12 +239,12 @@ FS::create(std::string filepath)
     // TODO: Check file already exist.
 
     dir_entry file;
-    dir_entry* f;
+    dir_entry* f = new dir_entry;
     uint16_t FAT[2048];
     
     uint8_t block[4096] = {0};
-    int ptr = sizeof(file);
-    int block_no;
+    int ptr = DIRENTRY_SIZE;
+    int block_no = -1;
     int next_block;
     
     int found; // Utilized in forwarding errors
@@ -218,14 +254,14 @@ FS::create(std::string filepath)
 
     // Find free block by iterating over FAT
     found = free_block(&block_no, FAT);
-
     // Return -1 if no free block is found
     if (found == -1) {
         return -1;
     }
 
     // Specify attributes
-    filepath.copy(file.file_name, sizeof(file.file_name));
+    strcpy(file.file_name, filepath.c_str());
+    // filepath.copy(file.file_name, sizeof(file.file_name));
     file.first_blk = block_no;
     file.type = 0;
     file.access_rights = 0x06;
@@ -255,14 +291,12 @@ FS::create(std::string filepath)
     put_direntry(&file, block, 0);
     // get_direntry(&f, block, 0);
 
-    std::cout << "wrote att" << std::endl; 
-
     for (int i = 0; i < content.size(); i++) {
         block[ptr] = (uint8_t)content[i];
         ptr++;
 
         // Handle multiple blocks
-        if (ptr > sizeof(block)) {
+        if (ptr > BLOCK_SIZE) {
 
             // Write old block
             disk.write(block_no, block);
@@ -279,9 +313,7 @@ FS::create(std::string filepath)
 
             // Reset ptr and block
             ptr = 0;
-            std::cout << "Ping" << std::endl;
             std::fill(std::begin(block), std::end(block), 0);
-            std::cout << "Pong" << std::endl;
         }
     }
 
@@ -292,24 +324,20 @@ FS::create(std::string filepath)
     // Read root
     disk.read(0, block);
 
-    std::cout << "find space" << std::endl; 
     // Get free root spot
     found = find_free_space(&ptr);
     if (found == -1) {
         return -1;
     }
 
-    std::cout << "enter dir into root" << std::endl; 
     // Enter direntry into root
     // std::cout << "DBF2 --------------" << std::endl;
-    put_direntry(&file, block, ptr*sizeof(dir_entry));
-    // get_direntry(&f, block, ptr*sizeof(dir_entry));
+    put_direntry(&file, block, ptr*DIRENTRY_SIZE);
+    // get_direntry(&f, block, ptr*DIRENTRY_SIZE);
 
-    std::cout << "save root" << std::endl; 
     // Save root
     disk.write(0, block);
 
-    std::cout << "save fat" << std::endl; 
     // Write FAT to disk
     save_fat(FAT, block);
 
@@ -329,7 +357,7 @@ FS::cat(std::string filepath)
     uint16_t FAT[2048];
 
     uint8_t block[4096];
-    int ptr = sizeof(dir_entry);
+    int ptr = DIRENTRY_SIZE;
 
     std::string text;
 
@@ -347,13 +375,13 @@ FS::cat(std::string filepath)
 
     // Interpret block file attributes
     // uint8_t attributes[64];
-    // for (int i = 0; i < sizeof(attributes); i++) {
+    // for (int i = 0; i < DIRENTRY_SIZE; i++) {
     //     attributes[i] = block[i];
     // }
     // dir_entry* file = reinterpret_cast<dir_entry*>(attributes);
     get_direntry(&file, block, 0);
 
-    // DEBUG
+    // Print file name
     std::cout << file->file_name << std::endl;
 
     // While FAT not EOL / Get next block from FAT
@@ -364,7 +392,7 @@ FS::cat(std::string filepath)
         std::cout << "-1: " << (uint16_t) -1 << std::endl;
         std::cout << "bool: " << b << std::endl;
         // Read text from block
-        for (;ptr < sizeof(block); ptr++) {
+        for (;ptr < BLOCK_SIZE; ptr++) {
             text += (char)block[ptr];
         }
 
@@ -376,11 +404,11 @@ FS::cat(std::string filepath)
         disk.read(block_no, block);
     }
 
-    for (;ptr < sizeof(block); ptr++) {
+    for (;ptr < BLOCK_SIZE; ptr++) {
         text += (char)block[ptr];
     }
 
-    // DEBUG
+    // Print text content
     std::cout << text << std::endl;
 
     return 0;
@@ -404,10 +432,10 @@ FS::ls()
     std::cout << "name\tsize" << std::endl;
 
     // Iterate over direntries
-    for (int i = 0; i < sizeof(block) / sizeof(dir_entry); i++) {
+    for (int i = 0; i < BLOCK_SIZE / DIRENTRY_SIZE; i++) {
 
         // Parse direntry
-        get_direntry(&file, block, i*sizeof(dir_entry));
+        get_direntry(&file, block, i*DIRENTRY_SIZE);
 
         // If file exist
         if (file->file_name[0] != 0) {
