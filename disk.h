@@ -6,7 +6,7 @@
 
 #define DISKNAME "diskfile.bin"
 #define BLOCK_SIZE 4096
-#define DEBUG true
+#define DEBUG false
 
 class Disk {
 private:
