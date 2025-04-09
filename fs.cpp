@@ -1,5 +1,6 @@
 #include <iostream>
 #include "fs.h"
+#include "disk.h"
 
 FS::FS()
 {
@@ -11,11 +12,37 @@ FS::~FS()
 
 }
 
+void defat(uint16_t *fat, uint8_t *block) {
+    for (int i = 0; i < BLOCK_SIZE/2; i++) {
+        block[i * 2] = (uint8_t)(fat[i] >> 8); // Might need readjustment
+        block[i * 2 + 1] = (uint8_t)fat[i];
+    }
+}
+
+void enfat(uint16_t *fat, uint8_t *block) {
+    for (int i = 0; i < BLOCK_SIZE/2; i++) {
+        fat[i] = (uint16_t)(block[i * 2] << 8) + block[i * 2 + 1]; // Might need readjustment
+    }
+}
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
 {
     std::cout << "FS::format()\n";
+    
+    // Init root
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.write(0, block);
+    
+    // Init FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE/2] {0};
+    fat[0] = (uint16_t)-1; // root
+    fat[1] = (uint16_t)-1; // FAT
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    defat(fat, block);
+    disk.write(1, block);
+    
     return 0;
 }
 
