@@ -17,6 +17,7 @@
 #define EXECUTE 0x01
 
 struct dir_entry {
+    // size 64 bytes
     char file_name[56]; // name of the file / sub-directory
     uint32_t size; // size of the file in bytes
     uint16_t first_blk; // index in the FAT for the first block of the file
@@ -27,8 +28,9 @@ struct dir_entry {
 class FS {
 private:
     Disk disk;
+
     // size of a FAT entry is 2 bytes
-    int16_t fat[BLOCK_SIZE/2];
+    // int16_t fat[BLOCK_SIZE / 2];
 
 public:
     FS();

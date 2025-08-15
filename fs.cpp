@@ -1,4 +1,6 @@
 #include <iostream>
+#include <string>
+#include <string.h>
 #include "fs.h"
 #include "disk.h"
 
@@ -12,17 +14,37 @@ FS::~FS()
 
 }
 
-void defat(uint16_t *fat, uint8_t *block) {
-    for (int i = 0; i < BLOCK_SIZE/2; i++) {
+void fat_to_block(uint16_t *fat, uint8_t *block) {
+    // converts block of uint16 fat entries to block of uint8 to enable usage of disk interface
+    for (int i = 0; i < BLOCK_SIZE / 2; i++) {
         block[i * 2] = (uint8_t)(fat[i] >> 8); // Might need readjustment
         block[i * 2 + 1] = (uint8_t)fat[i];
     }
 }
 
-void enfat(uint16_t *fat, uint8_t *block) {
-    for (int i = 0; i < BLOCK_SIZE/2; i++) {
+void block_to_fat(uint16_t *fat, uint8_t *block) {
+    // converts block of uint8, provided by the disk, to block of uint16 fat entries
+    for (int i = 0; i < BLOCK_SIZE / 2; i++) {
         fat[i] = (uint16_t)(block[i * 2] << 8) + block[i * 2 + 1]; // Might need readjustment
     }
+}
+
+void text_to_block(char *text, uint8_t *block) {
+    block = reinterpret_cast<uint8_t*>(text);
+}
+
+bool is_duplicate_name(dir_entry *files, char *file_name) {
+    // return whether name is duplicate or not
+    return true;
+}
+
+int free_block(uint16_t *fat) {
+    // return the first free fat block
+    for (int i = 0; i < BLOCK_SIZE / 2; i++) {
+        // found free block
+        if (fat[i] = (uint16_t)0) return i;
+    }
+    return 1;
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -36,11 +58,10 @@ FS::format()
     disk.write(0, block);
     
     // Init FAT
-    uint16_t *fat = new uint16_t [BLOCK_SIZE/2] {0};
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     fat[0] = (uint16_t)-1; // root
     fat[1] = (uint16_t)-1; // FAT
-    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    defat(fat, block);
+    fat_to_block(fat, block);
     disk.write(1, block);
     
     return 0;
@@ -52,6 +73,78 @@ int
 FS::create(std::string filepath)
 {
     std::cout << "FS::create(" << filepath << ")\n";
+    
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(1, block);
+    block_to_fat(fat, block);
+
+    // GET FILES
+    // PRESUMABLY array of 64 disk_entries
+    dir_entry files[64]; // TODO
+
+    // Create file
+    dir_entry file;
+
+    // strncpy with sizeof to limit string size
+    strncpy(file.file_name, filepath.c_str(), sizeof(file.file_name));
+
+    // Get next free block
+    file.first_blk = free_block(fat);
+    int blk = file.first_blk; // keep track of current block
+    fat[blk] = (uint16_t)-1; // set EOF
+
+    // Get content of file
+    std::string content;
+    std::string s;
+    do {
+        std::getline(std::cin, s);
+        // TODO write as we go?
+        content = content + s;
+    }
+    while (!s.empty());
+
+    // Save size
+    file.size = (uint32_t)sizeof(content.c_str());
+
+    // Convert string to blocks
+    // TODO: handle empty files
+    // Iterate over blocks needed to store content
+    int no_blocks = (int)((content.length() + 4095) / 4096);
+    for (int i = 0; i < no_blocks; i++) {
+
+        // convert string slice to block
+        char text[4096];
+        strncpy(text, content.c_str(), sizeof(text));
+        text_to_block(text, block);
+        disk.write(blk, block);
+
+        // if additional iterations
+        if (i + 1 < no_blocks) {
+            // slice string for next iteration
+            content = content.substr(4096);
+
+            // find next block for writing
+            int next_blk = free_block(fat);
+            // update fat, blockidx and EOF
+            fat[blk] = next_blk;
+            blk = next_blk;
+            fat[blk] = (uint16_t)-1;
+        }
+    }
+
+
+    file.type = (uint8_t)0;
+    file.access_rights = (uint8_t)7; // read (0x04) + write (0x02) + execute (0x01)
+
+    // Save files
+    files[0] = file;
+    block = reinterpret_cast<uint8_t*>(&files);
+    disk.write(0, block);
+    
+    // Save fat
+
     return 0;
 }
 
