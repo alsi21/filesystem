@@ -29,8 +29,20 @@ void block_to_fat(uint16_t *fat, uint8_t *block) {
     }
 }
 
+void files_to_block(dir_entry *files, uint8_t *block) {
+    memcpy(block, reinterpret_cast<uint8_t*>(files), BLOCK_SIZE);
+}
+
+void block_to_files(dir_entry *files, uint8_t *block) {
+    memcpy(files, reinterpret_cast<dir_entry*>(block), BLOCK_SIZE);
+}
+
 void text_to_block(char *text, uint8_t *block) {
-    block = reinterpret_cast<uint8_t*>(text);
+    memcpy(block, reinterpret_cast<uint8_t*>(text), BLOCK_SIZE);
+}
+
+void block_to_text(char *text, uint8_t *block) {
+    memcpy(text, reinterpret_cast<char*>(block), BLOCK_SIZE);
 }
 
 bool is_duplicate_name(dir_entry *files, char *file_name) {
@@ -42,9 +54,26 @@ int free_block(uint16_t *fat) {
     // return the first free fat block
     for (int i = 0; i < BLOCK_SIZE / 2; i++) {
         // found free block
-        if (fat[i] = (uint16_t)0) return i;
+        std::cout << "FS::free_block(" << i << " : " << fat[i] << ")\n";
+        if (fat[i] == (uint16_t)0) {
+            std::cout << "FS::free_block(found: " << i << ")\n";
+            return i;
+        }
     }
-    return 1;
+    std::cout << "FS::free_block(no memory found)\n";
+    return BLOCK_SIZE;
+}
+
+int free_file(dir_entry *files) {
+    for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
+        // found free block
+        std::cout << "FS::free_file(" << i << " : " << files[i].file_name << ")\n";
+        if (!(files[i].size > (uint32_t)0)) {
+            std::cout << "FS::free_file(found: " << i << " : " << files[i].file_name << ")\n";
+            return i;
+        }
+    }
+    return BLOCK_SIZE / sizeof(dir_entry);
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -81,8 +110,9 @@ FS::create(std::string filepath)
     block_to_fat(fat, block);
 
     // GET FILES
-    // PRESUMABLY array of 64 disk_entries
-    dir_entry files[64]; // TODO
+    dir_entry files[64];
+    disk.read(0, block);
+    block_to_files(files, block);
 
     // Create file
     dir_entry file;
@@ -91,8 +121,8 @@ FS::create(std::string filepath)
     strncpy(file.file_name, filepath.c_str(), sizeof(file.file_name));
 
     // Get next free block
-    file.first_blk = free_block(fat);
-    int blk = file.first_blk; // keep track of current block
+    int blk = free_block(fat);
+    file.first_blk = blk; // write to file header
     fat[blk] = (uint16_t)-1; // set EOF
 
     // Get content of file
@@ -104,6 +134,9 @@ FS::create(std::string filepath)
         content = content + s;
     }
     while (!s.empty());
+
+    std::cout << "FS::create(" << content << ")\n";
+    std::cout << "FS::create(" << s << ")\n";
 
     // Save size
     file.size = (uint32_t)sizeof(content.c_str());
@@ -118,6 +151,8 @@ FS::create(std::string filepath)
         char text[4096];
         strncpy(text, content.c_str(), sizeof(text));
         text_to_block(text, block);
+
+        // write block to disk
         disk.write(blk, block);
 
         // if additional iterations
@@ -126,24 +161,29 @@ FS::create(std::string filepath)
             content = content.substr(4096);
 
             // find next block for writing
-            int next_blk = free_block(fat);
             // update fat, blockidx and EOF
+            // order important to create headless ghost files instead of endless files/loops
+            int next_blk = free_block(fat);
+            fat[next_blk] = (uint16_t)-1;
             fat[blk] = next_blk;
             blk = next_blk;
-            fat[blk] = (uint16_t)-1;
         }
     }
 
-
-    file.type = (uint8_t)0;
+    file.type = (uint8_t)0; // Set type to file. [0=file, 1=directory]
     file.access_rights = (uint8_t)7; // read (0x04) + write (0x02) + execute (0x01)
 
-    // Save files
-    files[0] = file;
-    block = reinterpret_cast<uint8_t*>(&files);
+    // Find space in directory
+    int fileidx = free_file(files);
+
+    // Save file
+    files[fileidx] = file;
+    files_to_block(files, block);
     disk.write(0, block);
-    
+
     // Save fat
+    fat_to_block(fat, block);
+    disk.write(1, block);
 
     return 0;
 }
