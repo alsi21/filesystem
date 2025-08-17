@@ -151,7 +151,7 @@ FS::create(std::string filepath)
     }
 
     if (is_duplicate_name(files, filepath)) {
-        std::cout << "FS::create(err: duplicate file name \"" << filepath << "\")\n";
+        std::cout << "FS::create(err: file \"" << filepath << "\" already exists)\n";
         return -1;
     }
 
@@ -188,7 +188,6 @@ FS::create(std::string filepath)
     }
 
     // Convert string to blocks
-    // TODO: handle empty files
     // Iterate over blocks needed to store content
     int no_blocks = (int)((content.length() + 4095) / 4096);
     for (int i = 0; i < no_blocks; i++) {
@@ -317,7 +316,135 @@ FS::ls()
 int
 FS::cp(std::string sourcepath, std::string destpath)
 {
-    std::cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
+    if (DEBUG) std::cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
+
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(1, block);
+    block_to_fat(fat, block);
+
+    // GET FILES
+    dir_entry files[64];
+    disk.read(0, block);
+    block_to_files(files, block);
+
+    // Find space for file in directory
+    int destidx = free_file(files);
+
+    if (destidx == -1) {
+        std::cout << "FS::create(err: directory full)\n";
+        return -1;
+    }
+
+    if (sourcepath.length() > 55) {
+        std::cout << "FS::cp(err: sourcepath \"" << sourcepath << "\" too long)\n";
+        return -1;
+    }
+    if (destpath.length() > 55) {
+        std::cout << "FS::cp(err: destpath \"" << destpath << "\" too long)\n";
+        return -1;
+    }
+
+    if (is_duplicate_name(files, destpath)) {
+        std::cout << "FS::cp(err: destpath \"" << destpath << "\" already exists)\n";
+        return -1;
+    }
+
+    // seek source file
+    int sourceidx = seek_file(files, sourcepath);
+    // handle missing source file
+    if (sourceidx == -1) {
+        std::cout << "FS::cp(err: source not found)\n";
+        return -1;
+    }
+    dir_entry sourcefile = files[sourceidx];
+
+    // get content
+    std::string content;
+    {
+        // get first block
+        uint16_t blk = sourcefile.first_blk;
+
+        // iterate over file blocks
+        char text[4096];
+        disk.read(blk, block);
+        block_to_text(text, block);
+        std::string s(text, BLOCK_SIZE);
+        content = content + s;
+
+        // iterate until EOF
+        while(fat[blk] != (uint16_t)-1) {
+            blk = fat[blk];
+            disk.read(blk, block);
+            block_to_text(text, block);
+            std::string s(text, BLOCK_SIZE);
+            content = content + s;
+        }
+    }
+
+    // write content to new file
+    dir_entry destfile;
+    {
+        // strncpy with sizeof to limit string size
+        strncpy(destfile.file_name, destpath.c_str(), 55); // allow names of length 55
+
+        // Get next free block
+        int blk = free_block(fat);
+        destfile.first_blk = blk; // write to file header
+        fat[blk] = (uint16_t)-1; // set EOF
+
+        // Save size
+        destfile.size = sourcefile.size;
+
+        // should not be possible
+        // if (destfile.size == 0) {
+        //     std::cout << "FS::cp(err: empty files not allowed)\n";
+        //     return -1;
+        // }
+
+        // Convert string to blocks
+        // Iterate over blocks needed to store content
+        int no_blocks = (int)((content.length() + 4095) / 4096);
+        for (int i = 0; i < no_blocks; i++) {
+
+            // convert string slice to block
+            char text[4096];
+            strncpy(text, content.c_str(), sizeof(text));
+            text_to_block(text, block);
+
+            // write block to disk
+            disk.write(blk, block);
+
+            // if additional iterations
+            if (i + 1 < no_blocks) {
+                // slice string for next iteration
+                content = content.substr(4096);
+
+                // find next block for writing
+                // update fat, blockidx and EOF
+                // order important to create headless ghost files instead of endless files/loops
+                int next_blk = free_block(fat);
+                fat[next_blk] = (uint16_t)-1;
+                fat[blk] = next_blk;
+                blk = next_blk;
+            }
+        }
+
+        destfile.type = (uint8_t)0; // Set type to file. [0=file, 1=directory]
+        destfile.access_rights = (uint8_t)7; // read (0x04) + write (0x02) + execute (0x01)
+
+        // Save file
+        files[destidx] = destfile;
+        files_to_block(files, block);
+        disk.write(0, block);
+
+        // Save fat
+        fat_to_block(fat, block);
+        disk.write(1, block);
+    }
+
+
     return 0;
 }
 
