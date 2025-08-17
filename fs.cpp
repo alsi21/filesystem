@@ -76,6 +76,15 @@ int free_file(dir_entry *files) {
     return BLOCK_SIZE / sizeof(dir_entry);
 }
 
+int seek_file(dir_entry *files, std::string filepath) {
+    for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
+        if (strcmp(files[i].file_name, filepath.c_str()) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
@@ -193,6 +202,49 @@ int
 FS::cat(std::string filepath)
 {
     std::cout << "FS::cat(" << filepath << ")\n";
+
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(1, block);
+    block_to_fat(fat, block);
+
+    // GET FILES
+    dir_entry files[64];
+    disk.read(0, block);
+    block_to_files(files, block);
+
+    // seek file
+    int fileidx = seek_file(files, filepath);
+    // handle missing file
+    if (fileidx == -1) {
+        std::cout << "FS::cat(err: file not found)\n";
+        return -1;
+    }
+    dir_entry file = files[fileidx];
+
+    // get first block
+    uint16_t blk = file.first_blk;
+    std::string content;
+
+    // iterate over file blocks
+    char text[4096];
+    disk.read(blk, block);
+    block_to_text(text, block);
+    std::string s(text, BLOCK_SIZE);
+    content = content + s;
+
+    // iterate until EOF
+    while(fat[blk] != (uint16_t)-1) {
+        blk = fat[blk];
+        disk.read(blk, block);
+        block_to_text(text, block);
+        std::string s(text, BLOCK_SIZE);
+        content = content + s;
+    }
+
+    std::cout << content << "\n";
+
     return 0;
 }
 
