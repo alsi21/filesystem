@@ -1,13 +1,16 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <cstring>
 #include <string.h>
 #include "fs.h"
 #include "disk.h"
 
+#define DEBUG false
+
 FS::FS()
 {
-    std::cout << "FS::FS()... Creating file system\n";
+    if (DEBUG) std::cout << "FS::FS()... Creating file system\n";
 }
 
 FS::~FS()
@@ -46,35 +49,45 @@ void block_to_text(char *text, uint8_t *block) {
     memcpy(text, reinterpret_cast<char*>(block), BLOCK_SIZE);
 }
 
-bool is_duplicate_name(dir_entry *files, char *file_name) {
-    // return whether name is duplicate or not
-    return true;
+bool is_duplicate_name(dir_entry *files, std::string filepath) {
+    // iterate over files
+    for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
+        // check name
+        if (DEBUG) std::cout << "FS::is_duplicate_name(" << i << " : " << files[i].file_name << ")\n";
+        if (strcmp(files[i].file_name, filepath.c_str()) == 0) {
+            if (DEBUG) std::cout << "FS::is_duplicate_name(duplicate of: " << i << " : " << files[i].file_name << ")\n";
+            return true;
+        }
+    }
+    return false;
 }
 
 int free_block(uint16_t *fat) {
     // return the first free fat block
     for (int i = 0; i < BLOCK_SIZE / 2; i++) {
         // found free block
-        std::cout << "FS::free_block(" << i << " : " << fat[i] << ")\n";
+        if (DEBUG) std::cout << "FS::free_block(" << i << " : " << fat[i] << ")\n";
         if (fat[i] == (uint16_t)0) {
-            std::cout << "FS::free_block(found: " << i << ")\n";
+            if (DEBUG) std::cout << "FS::free_block(found: " << i << ")\n";
             return i;
         }
     }
-    std::cout << "FS::free_block(no memory found)\n";
-    return BLOCK_SIZE;
+    if (DEBUG) std::cout << "FS::free_block(no memory found)\n";
+    return -1; // TODO: catch error
 }
 
 int free_file(dir_entry *files) {
+    // iterate over files
     for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
-        // found free block
-        std::cout << "FS::free_file(" << i << " : " << files[i].file_name << ")\n";
+        // check empty
+        if (DEBUG) std::cout << "FS::free_file(" << i << " : " << files[i].file_name << ")\n";
         if (!(files[i].size > (uint32_t)0)) {
-            std::cout << "FS::free_file(found: " << i << " : " << files[i].file_name << ")\n";
+            // found free directory position
+            if (DEBUG) std::cout << "FS::free_file(found: " << i << " : " << files[i].file_name << ")\n";
             return i;
         }
     }
-    return BLOCK_SIZE / sizeof(dir_entry);
+    return -1; // TODO: catch this error
 }
 
 int seek_file(dir_entry *files, std::string filepath) {
@@ -90,7 +103,7 @@ int seek_file(dir_entry *files, std::string filepath) {
 int
 FS::format()
 {
-    std::cout << "FS::format()\n";
+    if (DEBUG) std::cout << "FS::format()\n";
     
     // Init root
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
@@ -111,7 +124,7 @@ FS::format()
 int
 FS::create(std::string filepath)
 {
-    std::cout << "FS::create(" << filepath << ")\n";
+    if (DEBUG) std::cout << "FS::create(" << filepath << ")\n";
     
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
@@ -124,11 +137,29 @@ FS::create(std::string filepath)
     disk.read(0, block);
     block_to_files(files, block);
 
+    // Find space for file in directory
+    int fileidx = free_file(files);
+
+    if (fileidx == -1) {
+        std::cout << "FS::create(err: directory full)\n";
+        return -1;
+    }
+
+    if (filepath.length() > 55) {
+        std::cout << "FS::create(err: name \"" << filepath << "\" too long)\n";
+        return -1;
+    }
+
+    if (is_duplicate_name(files, filepath)) {
+        std::cout << "FS::create(err: duplicate file name \"" << filepath << "\")\n";
+        return -1;
+    }
+
     // Create file
     dir_entry file;
 
     // strncpy with sizeof to limit string size
-    strncpy(file.file_name, filepath.c_str(), sizeof(file.file_name));
+    strncpy(file.file_name, filepath.c_str(), 55); // allow names of length 55
 
     // Get next free block
     int blk = free_block(fat);
@@ -145,11 +176,16 @@ FS::create(std::string filepath)
     }
     while (!s.empty());
 
-    std::cout << "FS::create(" << content << ")\n";
-    std::cout << "FS::create(" << s << ")\n";
+    if (DEBUG) std::cout << "FS::create(" << content << ")\n";
+    if (DEBUG) std::cout << "FS::create(" << s << ")\n";
 
     // Save size
-    file.size = (uint32_t)sizeof(content.c_str());
+    file.size = (uint32_t)content.size();
+
+    if (file.size == 0) {
+        std::cout << "FS::create(err: empty files not allowed)\n";
+        return -1;
+    }
 
     // Convert string to blocks
     // TODO: handle empty files
@@ -183,9 +219,6 @@ FS::create(std::string filepath)
     file.type = (uint8_t)0; // Set type to file. [0=file, 1=directory]
     file.access_rights = (uint8_t)7; // read (0x04) + write (0x02) + execute (0x01)
 
-    // Find space in directory
-    int fileidx = free_file(files);
-
     // Save file
     files[fileidx] = file;
     files_to_block(files, block);
@@ -202,7 +235,7 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
-    std::cout << "FS::cat(" << filepath << ")\n";
+    if (DEBUG) std::cout << "FS::cat(" << filepath << ")\n";
 
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
@@ -253,7 +286,7 @@ FS::cat(std::string filepath)
 int
 FS::ls()
 {
-    std::cout << "FS::ls()\n";
+    if (DEBUG) std::cout << "FS::ls()\n";
     
     // GET FILES
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
