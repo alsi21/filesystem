@@ -1,0 +1,79 @@
+• How do we structure and find the information on disk?
+    Figure out where and how file header is saved.
+    
+    "The file system we will implement should be organized as a file allocation table (linked allocation with an index table, see Sections 4.3 and 4.5.1 in [1])"
+
+    1 block is 4096 bytes
+
+    Root -> block 0
+    FAT -> block 1
+
+    2 bytes per FAT entry
+    FAT entry corresponds to disk block
+    2048 blocks per partition -> 8MB partition
+
+
+
+• In which blocks do we store the information of a particular file?
+
+    According to FAT, as seen page 3 of instructions
+
+• How do we keep track of which blocks free / available and which are allocated?
+
+    We do this in the FAT presumably, see page 3
+
+
+
+
+
+Progress
+
+Task 1:
+    (nej, inte möjligt) remake serialization and deserialization of fat and rename accordingly
+
+format:
+    [X] convert fat to block | tested [X]
+    [X] convert block to fat | tested [/]
+    [X] initialize fat and save to disk | tested [X]
+    [X] initialize root and save to disk | tested [X]
+
+create:
+    [X] dir entry in root | tested [X]
+    [X] make dynamically load files <<
+    [X] make dynamically save files <<
+    [X] test content saved
+
+    [X] add duplicate check
+    [X] add filename length check and error
+    [X] add directory full check and error
+    [X] handle empty files
+
+    MAKE SURE TO MEMCOPY AND NOT POPULATE POINTERS!!!
+
+cat: 
+    [X] make it! :D
+    [X] check if file exists
+
+ls:
+    [X] make it print
+
+Task 1 Bugs:
+    [X] files always has the size 8 bytes
+    [ ] file sizes does not match test baselines (tab and newline???)
+
+Task 2:
+
+cp:
+    [X] implement copy function with basic error handling
+
+mv:
+    [ ] basic implementation
+    [ ] basic error handling
+
+rm:
+    [ ] basic implementation
+    [ ] basic error handling
+
+append:
+    [ ] basic implementation
+    [ ] basic error handling
