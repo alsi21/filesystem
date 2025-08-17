@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <string.h>
 #include "fs.h"
@@ -253,6 +254,28 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
+    
+    // GET FILES
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    dir_entry files[64];
+    disk.read(0, block);
+    block_to_files(files, block);
+
+    std::cout << std::left
+        << std::setw(58) << "name"
+        << std::setw(12) << "size"
+        << "\n";
+    for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
+        // found file
+        if ((files[i].size > (uint32_t)0)) {
+            dir_entry file = files[i];
+            std::cout << std::left
+                << std::setw(58) << file.file_name
+                << std::setw(12) << file.size
+                << "\n";
+        }
+    }
+
     return 0;
 }
 
