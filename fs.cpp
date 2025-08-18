@@ -6,7 +6,7 @@
 #include "fs.h"
 #include "disk.h"
 
-#define DEBUG false
+#define DEBUG true
 
 FS::FS()
 {
@@ -172,7 +172,8 @@ FS::create(std::string filepath)
     do {
         std::getline(std::cin, s);
         // TODO write as we go?
-        content = content + s;
+        if (!s.empty()) content = content + s + '\n';
+        else content[content.size() - 1] = '\0';
     }
     while (!s.empty());
 
