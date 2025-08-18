@@ -527,7 +527,55 @@ FS::mv(std::string sourcepath, std::string destpath)
 int
 FS::rm(std::string filepath)
 {
-    std::cout << "FS::rm(" << filepath << ")\n";
+    if (DEBUG) std::cout << "FS::rm(" << filepath << ")\n";
+
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(1, block);
+    block_to_fat(fat, block);
+
+    // GET FILES
+    dir_entry files[64];
+    disk.read(0, block);
+    block_to_files(files, block);
+
+    // seek source file
+    int fileidx = seek_file(files, filepath);
+    // handle missing source file
+    if (fileidx == -1) {
+        std::cout << "FS::mv(err: source not found)\n";
+        return -1;
+    }
+    dir_entry file = files[fileidx];
+    
+    // save first block
+    uint16_t blk = file.first_blk;
+
+    // remove directory entry
+    {
+        files[fileidx] = dir_entry{};
+    }
+    
+    // clear fat
+    {
+        // clear fat blocks until EOF
+        while (fat[blk] != (uint16_t)-1) {
+            uint16_t next_blk = fat[blk];
+            fat[blk] = 0;
+            blk = next_blk;
+        }
+        fat[blk] = 0;
+    }
+
+    // Save file
+    files_to_block(files, block);
+    disk.write(0, block);
+
+    // Save fat
+    fat_to_block(fat, block);
+    disk.write(1, block);
+
     return 0;
 }
 
