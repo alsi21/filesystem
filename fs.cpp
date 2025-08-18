@@ -107,14 +107,14 @@ FS::format()
     
     // Init root
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.write(0, block);
+    disk.write(ROOT_BLOCK, block);
     
     // Init FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     fat[0] = (uint16_t)-1; // root
     fat[1] = (uint16_t)-1; // FAT
     fat_to_block(fat, block);
-    disk.write(1, block);
+    disk.write(FAT_BLOCK, block);
     
     return 0;
 }
@@ -129,12 +129,12 @@ FS::create(std::string filepath)
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.read(1, block);
+    disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
     // GET FILES
     dir_entry files[64];
-    disk.read(0, block);
+    disk.read(ROOT_BLOCK, block);
     block_to_files(files, block);
 
     // Find space for file in directory
@@ -146,7 +146,7 @@ FS::create(std::string filepath)
     }
 
     if (filepath.length() > 55) {
-        std::cout << "FS::create(err: name \"" << filepath << "\" too long)\n";
+        std::cout << "FS::create(err: filename \"" << filepath << "\" too long)\n";
         return -1;
     }
 
@@ -183,18 +183,18 @@ FS::create(std::string filepath)
     file.size = (uint32_t)content.size();
 
     if (file.size == 0) {
-        std::cout << "FS::create(err: empty files not allowed)\n";
+        std::cout << "FS::create(err: empty files are not allowed)\n";
         return -1;
     }
 
     // Convert string to blocks
     // Iterate over blocks needed to store content
-    int no_blocks = (int)((file.size + 4095) / 4096);
+    int no_blocks = (int)((file.size / BLOCK_SIZE) + 1);
     for (int i = 0; i < no_blocks; i++) {
 
         // convert string slice to block
-        char text[4096];
-        strncpy(text, content.c_str(), sizeof(text));
+        char text[BLOCK_SIZE];
+        strncpy(text, content.c_str(), BLOCK_SIZE);
         text_to_block(text, block);
 
         // write block to disk
@@ -203,7 +203,7 @@ FS::create(std::string filepath)
         // if additional iterations
         if (i + 1 < no_blocks) {
             // slice string for next iteration
-            content = content.substr(4096);
+            content = content.substr(BLOCK_SIZE - 1);
 
             // find next block for writing
             // update fat, blockidx and EOF
@@ -215,16 +215,16 @@ FS::create(std::string filepath)
     }
 
     file.type = (uint8_t)0; // Set type to file. [0=file, 1=directory]
-    file.access_rights = (uint8_t)7; // read (0x04) + write (0x02) + execute (0x01)
+    file.access_rights = (uint8_t)(READ + WRITE + EXECUTE); // read (0x04) + write (0x02) + execute (0x01)
 
     // Save file
     files[fileidx] = file;
     files_to_block(files, block);
-    disk.write(0, block);
+    disk.write(ROOT_BLOCK, block);
 
     // Save fat
     fat_to_block(fat, block);
-    disk.write(1, block);
+    disk.write(FAT_BLOCK, block);
 
     return 0;
 }
@@ -238,19 +238,19 @@ FS::cat(std::string filepath)
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.read(1, block);
+    disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
     // GET FILES
     dir_entry files[64];
-    disk.read(0, block);
+    disk.read(ROOT_BLOCK, block);
     block_to_files(files, block);
 
     // seek file
     int fileidx = seek_file(files, filepath);
     // handle missing file
     if (fileidx == -1) {
-        std::cout << "FS::cat(err: file not found)\n";
+        std::cout << "FS::cat(err: file \"" << filepath << "\" not found)\n";
         return -1;
     }
     dir_entry file = files[fileidx];
@@ -260,7 +260,7 @@ FS::cat(std::string filepath)
     std::string content;
 
     // iterate over file blocks
-    char text[4096];
+    char text[BLOCK_SIZE];
     disk.read(blk, block);
     block_to_text(text, block);
     std::string s(text, BLOCK_SIZE);
@@ -289,7 +289,7 @@ FS::ls()
     // GET FILES
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
     dir_entry files[64];
-    disk.read(0, block);
+    disk.read(ROOT_BLOCK, block);
     block_to_files(files, block);
 
     std::cout << std::left
@@ -320,19 +320,19 @@ FS::cp(std::string sourcepath, std::string destpath)
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.read(1, block);
+    disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
     // GET FILES
     dir_entry files[64];
-    disk.read(0, block);
+    disk.read(ROOT_BLOCK, block);
     block_to_files(files, block);
 
     // seek source file
     int sourceidx = seek_file(files, sourcepath);
     // handle missing source file
     if (sourceidx == -1) {
-        std::cout << "FS::cp(err: source not found)\n";
+        std::cout << "FS::cp(err: file \"" << sourcepath << "\" not found)\n";
         return -1;
     }
     dir_entry sourcefile = files[sourceidx];
@@ -347,16 +347,16 @@ FS::cp(std::string sourcepath, std::string destpath)
 
     // should not be possible
     if (sourcepath.length() > 55) {
-        std::cout << "FS::cp(err: sourcepath \"" << sourcepath << "\" too long)\n";
+        std::cout << "FS::cp(err: file \"" << sourcepath << "\" too long)\n";
         return -1;
     }
     if (destpath.length() > 55) {
-        std::cout << "FS::cp(err: destpath \"" << destpath << "\" too long)\n";
+        std::cout << "FS::cp(err: file \"" << destpath << "\" too long)\n";
         return -1;
     }
 
     if (is_duplicate_name(files, destpath)) {
-        std::cout << "FS::cp(err: destpath \"" << destpath << "\" already exists)\n";
+        std::cout << "FS::cp(err: file \"" << destpath << "\" already exists)\n";
         return -1;
     }
 
@@ -367,7 +367,7 @@ FS::cp(std::string sourcepath, std::string destpath)
         uint16_t blk = sourcefile.first_blk;
 
         // iterate over file blocks
-        char text[4096];
+        char text[BLOCK_SIZE];
         disk.read(blk, block);
         block_to_text(text, block);
         std::string s(text, BLOCK_SIZE);
@@ -405,12 +405,12 @@ FS::cp(std::string sourcepath, std::string destpath)
 
         // Convert string to blocks
         // Iterate over blocks needed to store content
-        int no_blocks = (int)((destfile.size + 4095) / 4096);
+        int no_blocks = (int)((destfile.size / BLOCK_SIZE) + 1);
         for (int i = 0; i < no_blocks; i++) {
 
             // convert string slice to block
-            char text[4096];
-            strncpy(text, content.c_str(), sizeof(text));
+            char text[BLOCK_SIZE];
+            strncpy(text, content.c_str(), BLOCK_SIZE - 1);
             text_to_block(text, block);
 
             // write block to disk
@@ -419,7 +419,7 @@ FS::cp(std::string sourcepath, std::string destpath)
             // if additional iterations
             if (i + 1 < no_blocks) {
                 // slice string for next iteration
-                content = content.substr(4096);
+                content = content.substr(BLOCK_SIZE - 1);
 
                 // find next block for writing
                 // update fat, blockidx and EOF
@@ -431,16 +431,16 @@ FS::cp(std::string sourcepath, std::string destpath)
         }
 
         destfile.type = (uint8_t)0; // Set type to file. [0=file, 1=directory]
-        destfile.access_rights = (uint8_t)7; // read (0x04) + write (0x02) + execute (0x01)
+        destfile.access_rights = (uint8_t)(READ + WRITE + EXECUTE); // read (0x04) + write (0x02) + execute (0x01)
 
         // Save file
         files[destidx] = destfile;
         files_to_block(files, block);
-        disk.write(0, block);
+        disk.write(ROOT_BLOCK, block);
 
         // Save fat
         fat_to_block(fat, block);
-        disk.write(1, block);
+        disk.write(FAT_BLOCK, block);
     }
 
 
@@ -457,36 +457,36 @@ FS::mv(std::string sourcepath, std::string destpath)
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.read(1, block);
+    disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
     // GET FILES
     dir_entry files[64];
-    disk.read(0, block);
+    disk.read(ROOT_BLOCK, block);
     block_to_files(files, block);
 
     // seek source file
     int sourceidx = seek_file(files, sourcepath);
     // handle missing source file
     if (sourceidx == -1) {
-        std::cout << "FS::mv(err: source not found)\n";
+        std::cout << "FS::mv(err: file \"" << sourcepath << "\" not found)\n";
         return -1;
     }
     dir_entry sourcefile = files[sourceidx];
 
     // should not be possible
     if (sourcepath.length() > 55) {
-        std::cout << "FS::mv(err: sourcepath \"" << sourcepath << "\" too long)\n";
+        std::cout << "FS::mv(err: file \"" << sourcepath << "\" too long)\n";
         return -1;
     }
     if (destpath.length() > 55) {
-        std::cout << "FS::mv(err: destpath \"" << destpath << "\" too long)\n";
+        std::cout << "FS::mv(err: file \"" << destpath << "\" too long)\n";
         return -1;
     }
 
     // handle duplicate name
     if (is_duplicate_name(files, destpath)) {
-        std::cout << "FS::mv(err: destpath \"" << destpath << "\" already exists)\n";
+        std::cout << "FS::mv(err: file \"" << destpath << "\" already exists)\n";
         return -1;
     }
 
@@ -499,7 +499,7 @@ FS::mv(std::string sourcepath, std::string destpath)
         // Save file
         files[sourceidx] = sourcefile;
         files_to_block(files, block);
-        disk.write(0, block);
+        disk.write(ROOT_BLOCK, block);
 
     } else {
         // handle directory change
@@ -517,7 +517,7 @@ FS::mv(std::string sourcepath, std::string destpath)
 
     // Save fat
     fat_to_block(fat, block);
-    disk.write(1, block);
+    disk.write(FAT_BLOCK, block);
 
     return 0;
 }
@@ -531,19 +531,19 @@ FS::rm(std::string filepath)
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.read(1, block);
+    disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
     // GET FILES
     dir_entry files[64];
-    disk.read(0, block);
+    disk.read(ROOT_BLOCK, block);
     block_to_files(files, block);
 
     // seek source file
     int fileidx = seek_file(files, filepath);
     // handle missing source file
     if (fileidx == -1) {
-        std::cout << "FS::mv(err: file not found)\n";
+        std::cout << "FS::mv(err: file \"" << filepath << "\" not found)\n";
         return -1;
     }
     dir_entry file = files[fileidx];
@@ -569,11 +569,11 @@ FS::rm(std::string filepath)
 
     // Save file
     files_to_block(files, block);
-    disk.write(0, block);
+    disk.write(ROOT_BLOCK, block);
 
     // Save fat
     fat_to_block(fat, block);
-    disk.write(1, block);
+    disk.write(FAT_BLOCK, block);
 
     return 0;
 }
@@ -588,19 +588,19 @@ FS::append(std::string filepath1, std::string filepath2)
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.read(1, block);
+    disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
     // GET FILES
     dir_entry files[64];
-    disk.read(0, block);
+    disk.read(ROOT_BLOCK, block);
     block_to_files(files, block);
 
     // seek file1
     int file1idx = seek_file(files, filepath1);
     // handle missing file1
     if (file1idx == -1) {
-        std::cout << "FS::cp(err: filepath1 not found)\n";
+        std::cout << "FS::cp(err: file \"" << filepath1 << "\" not found)\n";
         return -1;
     }
     dir_entry file1 = files[file1idx];
@@ -609,7 +609,7 @@ FS::append(std::string filepath1, std::string filepath2)
     int file2idx = seek_file(files, filepath2);
     // handle missing file2
     if (file2idx == -1) {
-        std::cout << "FS::cp(err: filepath2 not found)\n";
+        std::cout << "FS::cp(err: file \"" << filepath2 << "\" not found)\n";
         return -1;
     }
     dir_entry file2 = files[file2idx];
@@ -622,7 +622,7 @@ FS::append(std::string filepath1, std::string filepath2)
         uint16_t blk = file2.first_blk;
 
         // iterate over file blocks
-        char text[4096];
+        char text[BLOCK_SIZE];
         disk.read(blk, block);
         block_to_text(text, block);
         std::string s(text, BLOCK_SIZE);
@@ -644,7 +644,7 @@ FS::append(std::string filepath1, std::string filepath2)
         uint16_t blk = file1.first_blk;
 
         // iterate over file blocks
-        char text[4096];
+        char text[BLOCK_SIZE];
         disk.read(blk, block);
         block_to_text(text, block);
         std::string s(text, BLOCK_SIZE);
@@ -681,11 +681,11 @@ FS::append(std::string filepath1, std::string filepath2)
         // write content and update fat
         blk = file2.first_blk;
         {
-            int no_blocks = (int)((file2.size + 4095) / 4096);
+            int no_blocks = (int)((file2.size / BLOCK_SIZE) + 1);
             for (int i = 0; i < no_blocks; i++) {
                 // convert string slice to block
-                char text[4096];
-                strncpy(text, content.c_str(), sizeof(text));
+                char text[BLOCK_SIZE];
+                strncpy(text, content.c_str(), BLOCK_SIZE - 1);
                 text_to_block(text, block);
 
                 // write block to disk
@@ -695,7 +695,7 @@ FS::append(std::string filepath1, std::string filepath2)
                 // sloppy and does not account for shorter files, but that sould not be possible anyways
                 if (i + 1 < no_blocks) {
                     // slice string for next iteration
-                    content = content.substr(4096);
+                    content = content.substr(BLOCK_SIZE - 1);
         
                     // find next block for writing
                     // update fat, blockidx and EOF
@@ -715,11 +715,11 @@ FS::append(std::string filepath1, std::string filepath2)
     // Save file state
     files[file2idx] = file2;
     files_to_block(files, block);
-    disk.write(0, block);
+    disk.write(ROOT_BLOCK, block);
 
     // Save fat
     fat_to_block(fat, block);
-    disk.write(1, block);
+    disk.write(FAT_BLOCK, block);
 
     return 0;
 }
