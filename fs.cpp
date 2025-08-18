@@ -189,7 +189,7 @@ FS::create(std::string filepath)
 
     // Convert string to blocks
     // Iterate over blocks needed to store content
-    int no_blocks = (int)((content.length() + 4095) / 4096);
+    int no_blocks = (int)((file.size + 4095) / 4096);
     for (int i = 0; i < no_blocks; i++) {
 
         // convert string slice to block
@@ -207,7 +207,6 @@ FS::create(std::string filepath)
 
             // find next block for writing
             // update fat, blockidx and EOF
-            // order important to create headless ghost files instead of endless files/loops
             int next_blk = free_block(fat);
             fat[next_blk] = (uint16_t)-1;
             fat[blk] = next_blk;
@@ -405,7 +404,7 @@ FS::cp(std::string sourcepath, std::string destpath)
 
         // Convert string to blocks
         // Iterate over blocks needed to store content
-        int no_blocks = (int)((content.length() + 4095) / 4096);
+        int no_blocks = (int)((destfile.size + 4095) / 4096);
         for (int i = 0; i < no_blocks; i++) {
 
             // convert string slice to block
@@ -423,7 +422,6 @@ FS::cp(std::string sourcepath, std::string destpath)
 
                 // find next block for writing
                 // update fat, blockidx and EOF
-                // order important to create headless ghost files instead of endless files/loops
                 int next_blk = free_block(fat);
                 fat[next_blk] = (uint16_t)-1;
                 fat[blk] = next_blk;
@@ -584,7 +582,144 @@ FS::rm(std::string filepath)
 int
 FS::append(std::string filepath1, std::string filepath2)
 {
-    std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
+    if (DEBUG) std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
+
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(1, block);
+    block_to_fat(fat, block);
+
+    // GET FILES
+    dir_entry files[64];
+    disk.read(0, block);
+    block_to_files(files, block);
+
+    // seek file1
+    int file1idx = seek_file(files, filepath1);
+    // handle missing file1
+    if (file1idx == -1) {
+        std::cout << "FS::cp(err: filepath1 not found)\n";
+        return -1;
+    }
+    dir_entry file1 = files[file1idx];
+
+    // seek file2
+    int file2idx = seek_file(files, filepath2);
+    // handle missing file2
+    if (file2idx == -1) {
+        std::cout << "FS::cp(err: filepath2 not found)\n";
+        return -1;
+    }
+    dir_entry file2 = files[file2idx];
+
+
+    // get content from file2
+    std::string content;
+    {
+        // get first block
+        uint16_t blk = file2.first_blk;
+
+        // iterate over file blocks
+        char text[4096];
+        disk.read(blk, block);
+        block_to_text(text, block);
+        std::string s(text, BLOCK_SIZE);
+        content = content + s;
+
+        // iterate until EOF
+        while(fat[blk] != (uint16_t)-1) {
+            blk = fat[blk];
+            disk.read(blk, block);
+            block_to_text(text, block);
+            std::string s(text, BLOCK_SIZE);
+            content = content + s;
+        }
+    }
+
+    // get content from file1
+    {
+        // get first block
+        uint16_t blk = file1.first_blk;
+
+        // iterate over file blocks
+        char text[4096];
+        disk.read(blk, block);
+        block_to_text(text, block);
+        std::string s(text, BLOCK_SIZE);
+        content = content + s;
+
+        // iterate until EOF
+        while(fat[blk] != (uint16_t)-1) {
+            blk = fat[blk];
+            disk.read(blk, block);
+            block_to_text(text, block);
+            std::string s(text, BLOCK_SIZE);
+            content = content + s;
+        }
+    }
+    
+    // strip string from null-terminators
+    std::string cleaned;
+    for (char c : content) {
+        if (c != '\0') cleaned += c;
+    }
+    content = cleaned; // may need memcopy
+    
+    std::cout << "FS::append(" << content << ")\n";
+    std::cout << "FS::append(" << content.c_str() << ")\n";
+
+    // update file size
+    file2.size = file1.size + file2.size;
+
+    // write new content to file2
+    {
+        // get first block
+        uint16_t blk = file2.first_blk;
+
+        // write content and update fat
+        blk = file2.first_blk;
+        {
+            int no_blocks = (int)((file2.size + 4095) / 4096);
+            for (int i = 0; i < no_blocks; i++) {
+                // convert string slice to block
+                char text[4096];
+                strncpy(text, content.c_str(), sizeof(text));
+                text_to_block(text, block);
+
+                // write block to disk
+                disk.write(blk, block);
+        
+                // if additional iterations
+                // sloppy and does not account for shorter files, but that sould not be possible anyways
+                if (i + 1 < no_blocks) {
+                    // slice string for next iteration
+                    content = content.substr(4096);
+        
+                    // find next block for writing
+                    // update fat, blockidx and EOF
+                    if (fat[blk] == (uint16_t)-1) {
+                        int next_blk = free_block(fat);
+                        fat[next_blk] = (uint16_t)-1;
+                        fat[blk] = next_blk;
+                        blk = next_blk;
+                    } else {
+                        blk = fat[blk];
+                    }
+                }
+            }
+        }
+    }
+
+    // Save file state
+    files[file2idx] = file2;
+    files_to_block(files, block);
+    disk.write(0, block);
+
+    // Save fat
+    fat_to_block(fat, block);
+    disk.write(1, block);
+
     return 0;
 }
 
