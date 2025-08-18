@@ -333,7 +333,7 @@ FS::cp(std::string sourcepath, std::string destpath)
     int destidx = free_file(files);
 
     if (destidx == -1) {
-        std::cout << "FS::create(err: directory full)\n";
+        std::cout << "FS::cp(err: directory full)\n";
         return -1;
     }
 
@@ -453,7 +453,73 @@ FS::cp(std::string sourcepath, std::string destpath)
 int
 FS::mv(std::string sourcepath, std::string destpath)
 {
-    std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
+    if (DEBUG) std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
+
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(1, block);
+    block_to_fat(fat, block);
+
+    // GET FILES
+    dir_entry files[64];
+    disk.read(0, block);
+    block_to_files(files, block);
+
+    // handle length overflow
+    if (sourcepath.length() > 55) {
+        std::cout << "FS::mv(err: sourcepath \"" << sourcepath << "\" too long)\n";
+        return -1;
+    }
+    if (destpath.length() > 55) {
+        std::cout << "FS::mv(err: destpath \"" << destpath << "\" too long)\n";
+        return -1;
+    }
+
+    // handle duplicate name
+    if (is_duplicate_name(files, destpath)) {
+        std::cout << "FS::mv(err: destpath \"" << destpath << "\" already exists)\n";
+        return -1;
+    }
+
+    // seek source file
+    int sourceidx = seek_file(files, sourcepath);
+    // handle missing source file
+    if (sourceidx == -1) {
+        std::cout << "FS::mv(err: source not found)\n";
+        return -1;
+    }
+    dir_entry sourcefile = files[sourceidx];
+
+    if (true) {
+        // handle rename
+
+        // strncpy with sizeof to limit string size
+        strncpy(sourcefile.file_name, destpath.c_str(), 55); // allow names of length 55
+
+        // Save file
+        files[sourceidx] = sourcefile;
+        files_to_block(files, block);
+        disk.write(0, block);
+
+    } else {
+        // handle directory change
+        
+        // Find space for file in directory
+        int destidx = free_file(files);
+
+        // handle full directory
+        if (destidx == -1) {
+            std::cout << "FS::mv(err: directory full)\n";
+            return -1;
+        }
+
+    }
+
+    // Save fat
+    fat_to_block(fat, block);
+    disk.write(1, block);
+
     return 0;
 }
 
