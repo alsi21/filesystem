@@ -328,6 +328,15 @@ FS::cp(std::string sourcepath, std::string destpath)
     disk.read(0, block);
     block_to_files(files, block);
 
+    // seek source file
+    int sourceidx = seek_file(files, sourcepath);
+    // handle missing source file
+    if (sourceidx == -1) {
+        std::cout << "FS::cp(err: source not found)\n";
+        return -1;
+    }
+    dir_entry sourcefile = files[sourceidx];
+
     // Find space for file in directory
     int destidx = free_file(files);
 
@@ -336,6 +345,7 @@ FS::cp(std::string sourcepath, std::string destpath)
         return -1;
     }
 
+    // should not be possible
     if (sourcepath.length() > 55) {
         std::cout << "FS::cp(err: sourcepath \"" << sourcepath << "\" too long)\n";
         return -1;
@@ -349,15 +359,6 @@ FS::cp(std::string sourcepath, std::string destpath)
         std::cout << "FS::cp(err: destpath \"" << destpath << "\" already exists)\n";
         return -1;
     }
-
-    // seek source file
-    int sourceidx = seek_file(files, sourcepath);
-    // handle missing source file
-    if (sourceidx == -1) {
-        std::cout << "FS::cp(err: source not found)\n";
-        return -1;
-    }
-    dir_entry sourcefile = files[sourceidx];
 
     // get content
     std::string content;
@@ -464,7 +465,16 @@ FS::mv(std::string sourcepath, std::string destpath)
     disk.read(0, block);
     block_to_files(files, block);
 
-    // handle length overflow
+    // seek source file
+    int sourceidx = seek_file(files, sourcepath);
+    // handle missing source file
+    if (sourceidx == -1) {
+        std::cout << "FS::mv(err: source not found)\n";
+        return -1;
+    }
+    dir_entry sourcefile = files[sourceidx];
+
+    // should not be possible
     if (sourcepath.length() > 55) {
         std::cout << "FS::mv(err: sourcepath \"" << sourcepath << "\" too long)\n";
         return -1;
@@ -479,15 +489,6 @@ FS::mv(std::string sourcepath, std::string destpath)
         std::cout << "FS::mv(err: destpath \"" << destpath << "\" already exists)\n";
         return -1;
     }
-
-    // seek source file
-    int sourceidx = seek_file(files, sourcepath);
-    // handle missing source file
-    if (sourceidx == -1) {
-        std::cout << "FS::mv(err: source not found)\n";
-        return -1;
-    }
-    dir_entry sourcefile = files[sourceidx];
 
     if (true) {
         // handle rename
@@ -542,7 +543,7 @@ FS::rm(std::string filepath)
     int fileidx = seek_file(files, filepath);
     // handle missing source file
     if (fileidx == -1) {
-        std::cout << "FS::mv(err: source not found)\n";
+        std::cout << "FS::mv(err: file not found)\n";
         return -1;
     }
     dir_entry file = files[fileidx];
@@ -658,7 +659,7 @@ FS::append(std::string filepath1, std::string filepath2)
             content = content + s;
         }
     }
-    
+
     // strip string from null-terminators
     std::string cleaned;
     for (char c : content) {
@@ -666,8 +667,8 @@ FS::append(std::string filepath1, std::string filepath2)
     }
     content = cleaned; // may need memcopy
     
-    std::cout << "FS::append(" << content << ")\n";
-    std::cout << "FS::append(" << content.c_str() << ")\n";
+    if (DEBUG) std::cout << "FS::append(" << content << ")\n";
+    if (DEBUG) std::cout << "FS::append(" << content.c_str() << ")\n";
 
     // update file size
     file2.size = file1.size + file2.size;
