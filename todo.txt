@@ -60,6 +60,7 @@ ls:
 Task 1 Bugs:
     [X] files always has the size 8 bytes
     [ ] file sizes does not match test baselines (tab and newline???)
+    (possibly introduction of trailing null terminator)
 
 Task 2:
 
@@ -67,13 +68,17 @@ cp:
     [X] implement copy function with basic error handling
 
 mv:
-    [ ] basic implementation
-    [ ] basic error handling
+    [X] basic implementation
+    [X] basic error handling
 
 rm:
-    [ ] basic implementation
-    [ ] basic error handling
+    [X] basic implementation
+    [X] basic error handling
 
 append:
-    [ ] basic implementation
-    [ ] basic error handling
+    [X] basic implementation
+    [X] basic error handling
+
+todo:
+    [ ] add filenames to error messages to make it more clear
+    [ ] call all files "file" along with filename
