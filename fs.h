@@ -28,7 +28,7 @@ struct dir_entry {
 class FS {
 private:
     Disk disk;
-
+    char currentpath[4096]; // limits possible path
     // size of a FAT entry is 2 bytes
     // int16_t fat[BLOCK_SIZE / 2];
 

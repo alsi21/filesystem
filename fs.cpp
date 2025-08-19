@@ -733,7 +733,63 @@ FS::append(std::string filepath1, std::string filepath2)
 int
 FS::mkdir(std::string dirpath)
 {
-    std::cout << "FS::mkdir(" << dirpath << ")\n";
+    if (DEBUG) std::cout << "FS::mkdir(" << dirpath << ")\n";
+
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(FAT_BLOCK, block);
+    block_to_fat(fat, block);
+
+    // GET FILES
+    dir_entry files[64];
+    disk.read(ROOT_BLOCK, block);
+    block_to_files(files, block);
+
+    // Find space for file in directory
+    int fileidx = free_file(files);
+
+    if (fileidx == -1) {
+        std::cout << "FS::mkdir(err: directory full)\n";
+        return -1;
+    }
+
+    if (dirpath.length() > 55) {
+        std::cout << "FS::mkdir(err: directory name \"" << dirpath << "\" too long)\n";
+        return -1;
+    }
+
+    if (is_duplicate_name(files, dirpath)) {
+        std::cout << "FS::mkdir(err: file or directory \"" << dirpath << "\" already exists)\n";
+        return -1;
+    }
+
+    // Create file
+    dir_entry file;
+
+    // strncpy with sizeof to limit string size
+    strncpy(file.file_name, dirpath.c_str(), 55); // allow names of length 55
+
+    // Get next free block
+    int blk = free_block(fat);
+    file.first_blk = blk; // write to file header
+    fat[blk] = (uint16_t)-1; // set EOF
+
+    // Save size
+    file.size = (uint32_t)-1;
+
+    file.type = (uint8_t)1; // Set type to file. [0=file, 1=directory]
+    file.access_rights = (uint8_t)(READ + WRITE + EXECUTE); // read (0x04) + write (0x02) + execute (0x01)
+
+    // Save file
+    files[fileidx] = file;
+    files_to_block(files, block);
+    disk.write(ROOT_BLOCK, block);
+
+    // Save fat
+    fat_to_block(fat, block);
+    disk.write(FAT_BLOCK, block);
+
     return 0;
 }
 
