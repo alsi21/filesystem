@@ -6,7 +6,7 @@
 #include "fs.h"
 #include "disk.h"
 
-#define DEBUG true
+#define DEBUG false
 
 FS::FS()
 {
@@ -171,7 +171,7 @@ FS::create(std::string filepath)
     std::string s;
     do {
         std::getline(std::cin, s);
-        // TODO write as we go?
+        // pad with new line or null terminator
         if (!s.empty()) content = content + s + '\n';
         else content[content.size() - 1] = '\0';
     }
@@ -638,6 +638,8 @@ FS::append(std::string filepath1, std::string filepath2)
             content = content + s;
         }
     }
+    // pad file with new line, null terminator is removed later
+    content = content + '\n';
 
     // get content from file1
     {
@@ -667,6 +669,7 @@ FS::append(std::string filepath1, std::string filepath2)
         if (c != '\0') cleaned += c;
     }
     content = cleaned; // may need memcopy
+    content = content + '\0'; // add new null terminator following combining
     
     if (DEBUG) std::cout << "FS::append(" << content << ")\n";
     if (DEBUG) std::cout << "FS::append(" << content.c_str() << ")\n";
