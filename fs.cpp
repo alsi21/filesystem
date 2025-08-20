@@ -230,9 +230,13 @@ FS::create(std::string filepath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES
+    // GET FILES from current directory
+    int blockno = path_to_blockno(currentpath);
+    if (blockno == -1) {
+        std::cout << "FS::cd(unable to find current directory)\n";
+    }
     dir_entry files[64];
-    disk.read(ROOT_BLOCK, block);
+    disk.read(blockno, block);
     block_to_files(files, block);
 
     // Find space for file in directory
@@ -319,7 +323,7 @@ FS::create(std::string filepath)
     // Save file
     files[fileidx] = file;
     files_to_block(files, block);
-    disk.write(ROOT_BLOCK, block);
+    disk.write(blockno, block);
 
     // Save fat
     fat_to_block(fat, block);
@@ -388,7 +392,7 @@ FS::ls()
     // GET FILES
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
 
-    // get files from current directory
+    // GET FILES from current directory
     int blockno = path_to_blockno(currentpath);
     if (blockno == -1) {
         std::cout << "FS::cd(unable to find current directory)\n";
@@ -850,9 +854,13 @@ FS::mkdir(std::string dirpath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES
+    // GET FILES from current directory
+    int blockno = path_to_blockno(currentpath);
+    if (blockno == -1) {
+        std::cout << "FS::cd(unable to find current directory)\n";
+    }
     dir_entry files[64];
-    disk.read(ROOT_BLOCK, block);
+    disk.read(blockno, block);
     block_to_files(files, block);
 
     // Find space for file in directory
@@ -893,7 +901,7 @@ FS::mkdir(std::string dirpath)
     // Save file
     files[fileidx] = file;
     files_to_block(files, block);
-    disk.write(ROOT_BLOCK, block);
+    disk.write(blockno, block);
 
     // Save fat
     fat_to_block(fat, block);
