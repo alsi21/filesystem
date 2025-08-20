@@ -28,7 +28,12 @@ struct dir_entry {
 class FS {
 private:
     Disk disk;
-    char currentpath[4096]; // limits possible path
+    std::string currentpath = "/";
+
+    // introducing currentpath here causes stack smashing
+    //char currentpath[4096]; // limits possible path, given dir names of 55, depth is limited to 74
+    //std::string currentpath;
+
     // size of a FAT entry is 2 bytes
     // int16_t fat[BLOCK_SIZE / 2];
 
@@ -69,6 +74,9 @@ public:
     // chmod <accessrights> <filepath> changes the access rights for the
     // file <filepath> to <accessrights>.
     int chmod(std::string accessrights, std::string filepath);
+
+    // helper function for computing blockno from path
+    int path_to_blockno(std::string path);
 };
 
 #endif // __FS_H__

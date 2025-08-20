@@ -59,7 +59,7 @@ ls:
 
 Task 1 Bugs:
     [X] files always has the size 8 bytes
-    [ ] file sizes does not match test baselines (tab and newline???)
+    [X] file sizes does not match test baselines (tab and newline???)
     (possibly introduction of trailing null terminator)
     (most definitely introduction of line break and null terminator)
         [X] rework create to respect and save lines 
@@ -88,3 +88,46 @@ todo:
     [X] add filenames to error messages to make it more clear
     [X] call all files "file" along with filename
     [X] dynamic fat block, root block and block size, RWX
+
+Task 3:
+
+Overall:
+    [X] store path
+    [ ] check if '..' is saved in the directory?!
+    [ ] track path
+
+mkdir:
+    [X] create a "file" of directory type with allocated block
+
+cd:
+    [X] changes current working directory
+        [X] help function for split
+            [X] test
+        [X] help function for join
+            [X] test
+        [X] help function for fetching directory blockno
+            [X] test
+        [X] help function for popping path (to perform "..")
+            [X] test
+
+pwd:
+    [X] print the current full path
+
+mv:
+    [ ] move file instead of rename if destination is directory
+
+cat:
+    [ ] error if file is a directory
+    [ ] do this for all commands
+
+rm:
+    [ ] remove directory if empty
+    [ ] error if not empty
+
+ls:
+    [ ] print file type
+    [ ] print hyphen for directories' size
+
+Bugs:
+    [ ] file and directory names are mutually exclusive, should they??
+    [ ] stack smashing due to storage of current path in FS class
