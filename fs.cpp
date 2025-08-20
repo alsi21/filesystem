@@ -109,9 +109,6 @@ std::vector<std::string> split(std::string path, char delimiter) {
     size_t start = 0;
     // find first slash
     size_t end = path.find(delimiter);
-    if (start == end) {
-        return tokens;
-    }
 
     if (DEBUG) std::cout << "split - p1\n";
     // while string not ended, iterate
@@ -166,6 +163,7 @@ FS::path_to_blockno(std::string path) {
     memcpy(files, root, BLOCK_SIZE);
     // for token in tokens get next directory
     if (DEBUG) std::cout << "path_to_blockno - directory iterative loop\n";
+    if (DEBUG) std::cout << "path_to_blockno - tokens size: " << tokens.size() << "\n";
     for (size_t i = 0; i < tokens.size(); i++) {
         // check if directory exist in files
         int fileno = seek_file(files, tokens[i]);
@@ -190,9 +188,12 @@ FS::path_to_blockno(std::string path) {
 
 // Function to be used when seeking parent directory
 std::string pop_path(std::string path) {
+    if (DEBUG) std::cout << "pop_path(" << path << ")\n";
     std::vector<std::string> tokens = split(path, '/');
+    if (DEBUG) std::cout << "pop_path - pop_back\n";
     tokens.pop_back();
     std::string parentpath = join(tokens, '/');
+    if (DEBUG) std::cout << "pop_path - result: " << parentpath << "\n";
     return parentpath;
 }
 
@@ -386,21 +387,32 @@ FS::ls()
     
     // GET FILES
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+
+    // get files from current directory
+    int blockno = path_to_blockno(currentpath);
+    if (blockno == -1) {
+        std::cout << "FS::cd(unable to find current directory)\n";
+    }
+
     dir_entry files[64];
-    disk.read(ROOT_BLOCK, block);
+    disk.read(blockno, block);
     block_to_files(files, block);
 
     std::cout << std::left
         << std::setw(58) << "name"
+        << std::setw(7) << "type"
         << std::setw(12) << "size"
         << "\n";
     for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
         // found file
         if ((files[i].size > (uint32_t)0)) {
             dir_entry file = files[i];
+            std::string size = file.type ? "-" : std::to_string(file.size);
+            std::string type = file.type ? "dir" : "file";
             std::cout << std::left
                 << std::setw(58) << file.file_name
-                << std::setw(12) << file.size
+                << std::setw(7) << type
+                << std::setw(12) << size
                 << "\n";
         }
     }
@@ -899,7 +911,7 @@ FS::cd(std::string dirpath)
     // handle ".."
 
     if (dirpath == "..") {
-        currentpath = pop_path(dirpath);
+        currentpath = pop_path(currentpath);
         return 0;
     }
 
