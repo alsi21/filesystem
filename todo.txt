@@ -95,15 +95,17 @@ Overall:
     [X] store path
     [ ] check if '..' is saved in the directory?!
     [X] track path
+    [X] check corrent length for tokens?!
+    [ ] err or no err in error messages
 
 create:
     [X] map creation to current directory
-        [ ] test
+        [x] test
 
 mkdir:
     [X] create a "file" of directory type with allocated block
     [X] map creation to current directory
-        [ ] test    
+        [x] test    
 cd:
     [X] changes current working directory
         [X] help function for split
@@ -119,24 +121,30 @@ pwd:
     [X] print the current full path
 
 mv:
-    [ ] move file instead of rename if destination is directory
-    [ ] get files from current directory
+    [X] move file instead of rename if destination is directory
+    [X] get files from current directory
+        [X] test
+    [ ] sepcial case for ".."?
 
 cat:
-    [ ] error if file is a directory
-    [ ] do this for all commands
-    [ ] get files from current directory
+    [X] error if file is a directory
+    [X] do this for all commands
+    [X] get files from current directory
 
 append:
-    [ ] get files from current directory
+    [X] get files from current directory
+    [X] error if not files
 
 cp: 
-    [ ] get files from current directory
+    [X] get files from current directory
+    [X] error if source not file
+    [X] handle destination being directory
 
 rm:
-    [ ] remove directory if empty
-    [ ] error if not empty
-    [ ] get files from current directory
+    [X] remove directory if empty
+    [X] error if not empty
+    [X] get files from current directory
+        [X] tested
 
 ls:
     [X] print file type
@@ -146,3 +154,7 @@ ls:
 Bugs:
     [ ] file and directory names are mutually exclusive, should they??
     [ ] stack smashing due to storage of current path in FS class
+
+
+TODO:
+    [ ] remove uneccesary fat load and save
