@@ -77,6 +77,8 @@ public:
 
     // helper functions for computing files from path
     dir_entry path_to_file(std::string path);
+    int path_to_file_idx(std::string path);
+    std::string path_to_abs(std::string path);
 };
 
 #endif // __FS_H__

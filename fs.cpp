@@ -91,9 +91,9 @@ int free_file(dir_entry *files) {
     return -1; // TODO: catch this error
 }
 
-int seek_file(dir_entry *files, std::string filepath) {
+int seek_in_files(dir_entry *files, std::string name) {
     for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
-        if (strcmp(files[i].file_name, filepath.c_str()) == 0) {
+        if (strcmp(files[i].file_name, name.c_str()) == 0) {
             return i;
         }
     }
@@ -114,36 +114,32 @@ bool dir_empty(dir_entry *files) {
     return true;
 }
 
-std::string path_to_name(std::string path) {
-    // Need to handle when path ends with ".."??
-    std::vector<std::string> tokens = split(path, '/');
-    return tokens.back();
-}
-
 // Function for splitting path into directories and file
 std::vector<std::string> split(std::string path, char delimiter) {
-    if (DEBUG) std::cout << "split()\n";
+    if (DEBUG) std::cout << "split(" << path << ")\n";
 
     
     std::vector<std::string> tokens;
+    // size_t start = path.at(0) == '/' ? 1 : 0;
     size_t start = 0;
     // find first slash
     size_t end = path.find(delimiter);
 
-    if (DEBUG) std::cout << "split - p1\n";
     // while string not ended, iterate
     while (end != std::string::npos) {
         // add found token
-        if (DEBUG) std::cout << "split - loop-pushback\n";
-        tokens.push_back(path.substr(start, end-start));
+        std::string subs = path.substr(start, end-start);
+        if (subs != "") tokens.push_back(subs);
         // find next slash after updated start;
         start = end + 1;
-        if (DEBUG) std::cout << "split - loop-find\n";
         end = path.find(delimiter, start);
     }
-    if (DEBUG) std::cout << "split - p3\n";
     tokens.push_back(path.substr(start, end-start)); // trailing token (file name)
-    if (DEBUG) std::cout << "split - p4\n";
+
+    for (size_t i = 0; i < tokens.size(); i++) {
+        if (DEBUG) std::cout << "split(): token " << i << ": " << tokens[i] << "\n";
+    }
+
     return tokens;
 }
 
@@ -159,6 +155,56 @@ std::string join(std::vector<std::string> tokens, char delimiter) {
         path += delimiter + tokens[i];
     }
     return path;
+}
+
+// Function for extracting file name from path
+std::string path_to_name(std::string path) {
+    // Need to handle when path ends with ".."??
+    std::vector<std::string> tokens = split(path, '/');
+    return tokens.back();
+}
+
+// Function to be used when seeking parent directory
+std::string pop_path(std::string path) {
+    if (DEBUG) std::cout << "pop_path(" << path << ")\n";
+    std::vector<std::string> tokens = split(path, '/');
+    if (DEBUG) std::cout << "pop_path - pop_back\n";
+    tokens.pop_back();
+    std::string parentpath = join(tokens, '/');
+    if (DEBUG) std::cout << "pop_path - result: " << parentpath << "\n";
+    return parentpath;
+}
+
+std::string
+FS::path_to_abs(std::string path) {
+    if (DEBUG) std::cout << "path_to_abs(" << path << ")\n";
+    
+    std::string abs;
+    if (path.at(0) == '/'){
+        abs = path;
+    } else {
+        abs = currentpath == "/" ? currentpath + path : currentpath + "/" + path;
+    }    
+    if (DEBUG) std::cout << "path_to_abs(abs pre-parse: " << abs << ")\n";
+    std::vector<std::string> tokens = split(abs, '/');
+    std::vector<std::string> a_tokens;
+    if (DEBUG) std::cout << "path_to_abs(DOG: " << join(tokens, '/') << ")\n";
+
+    for (size_t i = 0; i < tokens.size(); i++) {
+        if (tokens[i] == "..") {
+            if (DEBUG) std::cout << "FS::path_to_abs(pop on " << tokens[i] << ")\n";
+            if (a_tokens.size() > 0) a_tokens.pop_back();
+            else {
+                std::cout << "FS::path_to_abs(parent of \"" << path << "\" not found)\n";
+            }
+        } else {
+            if (DEBUG) std::cout << "FS::path_to_abs(push back on " << tokens[i] << ")\n";
+            a_tokens.push_back(tokens[i]);
+        }
+    }
+    abs = join(a_tokens, '/');
+    if (DEBUG) std::cout << "path_to_abs(return: " << abs << ")\n";
+    return abs;
 }
 
 // Function for getting file from path
@@ -180,7 +226,18 @@ FS::path_to_file(std::string ipath) {
     else {
         path = currentpath == "/" ? currentpath + ipath : currentpath + "/" + ipath;
     }
-    if (DEBUG) std::cout << "path_to_file(" << path << ")\n";
+    if (DEBUG) std::cout << "FS::path_to_file(" << path << ")\n";
+
+    if (path == "/") {
+        dir_entry root = {
+            "root",
+            (uint32_t)-1,
+            (uint16_t)0,
+            (uint8_t)1,
+            (uint8_t) READ + WRITE + EXECUTE
+        };
+        return root;
+    }
     
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
 
@@ -198,16 +255,16 @@ FS::path_to_file(std::string ipath) {
     int blockno = 0; // TODO may need to include pass -1 and catch in certain cases
     memcpy(files, root, BLOCK_SIZE); // det files to root
     // for token in tokens get next directory
-    if (DEBUG) std::cout << "path_to_file - directory iterative loop\n";
-    if (DEBUG) std::cout << "path_to_file - tokens size: " << tokens.size() << "\n";
+    if (DEBUG) std::cout << "FS::path_to_file - directory iterative loop\n";
+    if (DEBUG) std::cout << "FS::path_to_file - tokens size: " << tokens.size() << "\n";
     for (size_t i = 0; i < tokens.size(); i++) {
 
         // case: ".."
         if (tokens[i] == "..") {
-            if (DEBUG) std::cout << "path_to_file(token case: \"..\")\n";
+            if (DEBUG) std::cout << "FS::path_to_file(token case: \"..\")\n";
             // if current is root throw error
             if (working_path == "/") {
-                std::cout << "path_to_file(err: cannot get parent of root)\n";
+                if (DEBUG) std::cout << "FS::path_to_file(err: cannot get parent of root)\n";
                 return dir_entry{};
             }
 
@@ -221,22 +278,22 @@ FS::path_to_file(std::string ipath) {
 
             // update working path
             working_path = parent_path;
-            if (DEBUG) std::cout << "path_to_file - working_path = " << working_path << "\n";
+            if (DEBUG) std::cout << "FS::path_to_file - working_path = " << working_path << "\n";
         }
         // case: normal directory name
         else {
-            if (DEBUG) std::cout << "path_to_file(token case: \"" << tokens[i] << "\")\n";
+            if (DEBUG) std::cout << "FS::path_to_file(token case: \"" << tokens[i] << "\")\n";
             // check if directory exist in files
             // file name length
             if (tokens[i].length() > 55) {
-                std::cout << "FS::path_to_file(err: path token \"" << tokens[i] << "\" too long)\n";
+                if (DEBUG) std::cout << "FS::path_to_file(err: path token \"" << tokens[i] << "\" too long)\n";
                 return dir_entry{};
             }
-            int fileno = seek_file(files, tokens[i]);
+            int fileno = seek_in_files(files, tokens[i]);
             if (DEBUG) std::cout << "path_to_file - fileno = " << fileno << "\n";
             if (fileno == -1) {
                 // TODO error message could be better...
-                std::cout << "FS::path_to_file(directory or file \"" << tokens[i] << "\" not found)\n";
+                if (DEBUG) std::cout << "FS::path_to_file(directory or file \"" << tokens[i] << "\" not found)\n";
                 // maybe loop over tokens and print?
                 return dir_entry{};
             }
@@ -244,8 +301,8 @@ FS::path_to_file(std::string ipath) {
             // get blockno
             file = files[fileno];
             blockno = (int)file.first_blk;
-            if (DEBUG) std::cout << "path_to_file - file_name = " << file.file_name << "\n";
-            if (DEBUG) std::cout << "path_to_file - blockno = " << blockno << "\n";
+            if (DEBUG) std::cout << "FS::path_to_file - file_name = " << file.file_name << "\n";
+            if (DEBUG) std::cout << "FS::path_to_file - blockno = " << blockno << "\n";
             
             // if more iterations, prepare files for next
             if (i < tokens.size() - 1) {
@@ -257,28 +314,43 @@ FS::path_to_file(std::string ipath) {
             // update working path
             // working_path = working_path + tokens[i] + "/";
             working_path = working_path == "/" ? working_path + tokens[i] : working_path + "/" + tokens[i];
-            if (DEBUG) std::cout << "path_to_file - working_path = " << working_path << "\n";
+            if (DEBUG) std::cout << "FS::path_to_file - working_path = " << working_path << "\n";
         }
     }
 
     if (file.type) {
-        if (DEBUG) std::cout << "returning directory: " << file.file_name << "\n";   
+        if (DEBUG) std::cout << "FS::path_to_file - returning directory: " << file.file_name << "\n";   
     } else {
-        if (DEBUG) std::cout << "returning file: " << file.file_name << "\n";   
+        if (DEBUG) std::cout << "FS::path_to_file - returning file: " << file.file_name << "\n";   
     }
 
     return file;
 }
 
-// Function to be used when seeking parent directory
-std::string pop_path(std::string path) {
-    if (DEBUG) std::cout << "pop_path(" << path << ")\n";
-    std::vector<std::string> tokens = split(path, '/');
-    if (DEBUG) std::cout << "pop_path - pop_back\n";
-    tokens.pop_back();
-    std::string parentpath = join(tokens, '/');
-    if (DEBUG) std::cout << "pop_path - result: " << parentpath << "\n";
-    return parentpath;
+// Function for computing file index in directory from path
+int 
+FS::path_to_file_idx(std::string filepath) {
+
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+
+    std::string parent_path = pop_path(path_to_abs(filepath));
+    dir_entry parent_dir = path_to_file(parent_path);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::path_to_file_idx(unable to find parent directory)\n";
+        return -1;
+    }
+    int blockno = parent_dir.first_blk;
+    dir_entry files[64];
+    disk.read(blockno, block);
+    block_to_files(files, block);
+
+    for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
+        std::string name = path_to_name(filepath);
+        if (strcmp(files[i].file_name, name.c_str()) == 0) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -322,11 +394,12 @@ FS::create(std::string filepath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES from current directory
-    std::string parent_path = filepath + '/' + "..";
+    // GET FILES from path parent directory
+    std::string parent_path = pop_path(path_to_abs(filepath));
     dir_entry parent_dir = path_to_file(parent_path);
     if (!(parent_dir.size > (uint32_t)0)) { // check existance
         std::cout << "FS::create(unable to find parent directory)\n";
+        return -1;
     }
     int blockno = parent_dir.first_blk;
     dir_entry files[64];
@@ -439,11 +512,14 @@ FS::cat(std::string filepath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::cat(unable to find current directory)\n";
+    // GET FILES from path parent directory
+    std::string parent_path = pop_path(path_to_abs(filepath));;
+    dir_entry parent_dir = path_to_file(parent_path);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::cat(unable to find parent directory)\n";
+        return -1;
     }
+    int blockno = parent_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -455,13 +531,12 @@ FS::cat(std::string filepath)
     }
 
     // seek file
-    int fileidx = seek_file(files, filepath);
+    dir_entry file = path_to_file(path_to_abs(filepath));
     // handle missing file
-    if (fileidx == -1) {
+    if (!(file.size > (uint32_t)0)) { // check existance
         std::cout << "FS::cat(err: file \"" << filepath << "\" not found)\n";
         return -1;
     }
-    dir_entry file = files[fileidx];
     
     // check file type
     if (file.type) {
@@ -502,11 +577,13 @@ FS::ls()
     
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
 
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::ls(unable to find current directory)\n";
+    // GET FILES from path parent directory
+    dir_entry parent_dir = path_to_file(currentpath);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::ls(unable to find parent directory)\n";
+        return -1;
     }
+    int blockno = parent_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -546,11 +623,14 @@ FS::cp(std::string sourcepath, std::string destpath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::cp(unable to find current directory)\n";
+    // GET FILES from path parent directory
+    std::string src_parent_path = pop_path(path_to_abs(sourcepath));
+    dir_entry source_dir = path_to_file(src_parent_path);
+    if (!(source_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::cp(unable to find parent directory)\n";
+        return -1;
     }
+    int blockno = source_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -565,33 +645,31 @@ FS::cp(std::string sourcepath, std::string destpath)
         return -1;
     }
 
-    // seek source file
-    int sourceidx = seek_file(files, sourcepath);
-    // handle missing source file
-    if (sourceidx == -1) {
+    // seek file
+    dir_entry sourcefile = path_to_file(path_to_abs(sourcepath));
+    // handle missing file
+    if (!(sourcefile.size > (uint32_t)0)) { // check existance
         std::cout << "FS::cp(err: file \"" << sourcepath << "\" not found)\n";
         return -1;
     }
-    dir_entry sourcefile = files[sourceidx];
 
     // check source type
     if (sourcefile.type) {
-        std::cout << "FS::cat(err: file \"" << sourcepath << "\" of type directory)\n";
+        std::cout << "FS::cp(err: file \"" << sourcepath << "\" of type directory)\n";
         return -1;
     }
 
-    dir_entry directory;
+    // seek destination
+    dir_entry directory = path_to_file(path_to_abs(destpath));
+    // handle missing file
     bool isdir = false;
-    int diridx = seek_file(files, destpath);
-    // check destination type and swap files if true
-    if (diridx != -1) { // works as a check of file existance
-        directory = files[diridx];
+    if ((directory.size > (uint32_t)0)) { // check existance
         if (directory.type == 0) { // if file
             std::cout << "FS::cp(err: file \"" << destpath << "\" already exists)\n";
             return -1;
         } else { // if directory
             // swap files
-            blockno = (int)files[diridx].first_blk;
+            blockno = directory.first_blk;
             disk.read(blockno, block);
             block_to_files(files, block);
 
@@ -635,7 +713,7 @@ FS::cp(std::string sourcepath, std::string destpath)
     dir_entry destfile;
     {
         // strncpy with sizeof to limit string size
-        std::string new_name = isdir ? sourcefile.file_name : destpath;
+        std::string new_name = isdir ? sourcefile.file_name : path_to_name(destpath);
         strncpy(destfile.file_name, new_name.c_str(), 55); // allow names of length 55
 
         // Get next free block
@@ -709,11 +787,14 @@ FS::mv(std::string sourcepath, std::string destpath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::mv(unable to find current directory)\n";
+    // GET FILES from path parent directory
+    std::string src_parent_path = pop_path(path_to_abs(sourcepath));
+    dir_entry source_dir = path_to_file(src_parent_path);
+    if (!(source_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::mv(unable to find parent directory)\n";
+        return -1;
     }
+    int blockno = source_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -728,72 +809,70 @@ FS::mv(std::string sourcepath, std::string destpath)
         return -1;
     }
 
-    // seek source file
-    int sourceidx = seek_file(files, sourcepath);
-    // handle missing source file
-    if (sourceidx == -1) {
+    // seek file
+    dir_entry sourcefile = path_to_file(path_to_abs(sourcepath));
+    int sourceidx = path_to_file_idx(sourcepath);
+    // handle missing file
+    if (!(sourcefile.size > (uint32_t)0)) { // check existance
         std::cout << "FS::mv(err: file \"" << sourcepath << "\" not found)\n";
         return -1;
     }
-    dir_entry sourcefile = files[sourceidx];
 
-    // check existance of directory
-    // seek directory
-    int diridx = seek_file(files, destpath);
-    // determine type from results
-    int type = diridx == -1 ? 0 : 1;
+    // check source type
+    if (sourcefile.type) {
+        std::cout << "FS::mv(err: file \"" << sourcepath << "\" of type directory)\n";
+        return -1;
+    }
 
     // save information in case of succesful move, for removal from source directory
     dir_entry sourcefiles[64];
     memcpy(sourcefiles, files, BLOCK_SIZE);
     int sourceblockno = blockno;
 
-    // case: directory type
-    if (type) { // move
-        
-        // handle missing directory
-        if (diridx == -1) {
-            std::cout << "FS::mv(err: directory \"" << destpath << "\" not found)\n";
-            return -1;
-        }
-        
-        // swap files
-        blockno = (int)files[diridx].first_blk;
-        disk.read(blockno, block);
-        block_to_files(files, block);
-
-        // Find space for file in directory
-        int destidx = free_file(files);
-
-        if (is_duplicate_name(files, destpath)) {
+    // seek destination
+    dir_entry directory = path_to_file(path_to_abs(destpath));
+    // handle missing file
+    bool isdir = false;
+    if ((directory.size > (uint32_t)0)) { // check existance
+        if (directory.type == 0) { // if file
+            // handle duplicate name
             std::cout << "FS::mv(err: file \"" << destpath << "\" already exists)\n";
             return -1;
+        } else { // if directory, move file
+            // swap files
+            blockno = directory.first_blk;
+            disk.read(blockno, block);
+            block_to_files(files, block);
+
+            // Find space for file in directory
+            int destidx = free_file(files);
+
+            if (is_duplicate_name(files, sourcefile.file_name)) {
+                std::cout << "FS::mv(err: file \"" << sourcefile.file_name << "\" already exists)\n";
+                return -1;
+            }
+            // handle full directory
+            if (destidx == -1) {
+                std::cout << "FS::mv(err: directory full)\n";
+                return -1;
+            }
+
+            // write file to new directory
+            files[destidx] = sourcefile;
+
+            // remove file from old directory
+            sourcefiles[sourceidx] = dir_entry{};
+
+            // save directory state
+            isdir = true;
         }
-
-        // handle full directory
-        if (destidx == -1) {
-            std::cout << "FS::mv(err: directory full)\n";
-            return -1;
-        }
-
-        // write file to new directory
-        files[destidx] = sourcefile;
-
-        // remove file from old directory
-        sourcefiles[sourceidx] = dir_entry{};
-
-    }
-
-    // case: file type
-    else { // rename
-        // handle duplicate name
-        if (is_duplicate_name(files, destpath)) {
-            std::cout << "FS::mv(err: file \"" << destpath << "\" already exists)\n";
-            return -1;
-        }
-        
+    } else { // rename
+        if (DEBUG) std::cout << "FS::mv(renaming file)\n";
         // strncpy with sizeof to limit string size
-        strncpy(sourcefile.file_name, destpath.c_str(), 55); // allow names of length 55
+        std::string new_name = isdir ? sourcefile.file_name : path_to_name(destpath);
+        if (DEBUG) std::cout << "FS::mv(new name: " << new_name << ")\n";
+        if (DEBUG) std::cout << "FS::mv(srcidx: " << sourceidx << ")\n";
+        strncpy(sourcefile.file_name, new_name.c_str(), 55); // allow names of length 55
         
         // write new file name to files
         files[sourceidx] = sourcefile;
@@ -804,7 +883,7 @@ FS::mv(std::string sourcepath, std::string destpath)
     disk.write(blockno, block);
 
     // Remove old file if move directory
-    if (type) {
+    if (isdir) {
         files_to_block(sourcefiles, block);
         disk.write(sourceblockno, block);
     }
@@ -828,11 +907,14 @@ FS::rm(std::string filepath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::rm(unable to find current directory)\n";
+    // GET FILES from path parent directory
+    std::string parent_path = pop_path(path_to_abs(filepath));
+    dir_entry parent_dir = path_to_file(parent_path);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::rm(unable to find parent directory)\n";
+        return -1;
     }
+    int blockno = parent_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -843,18 +925,17 @@ FS::rm(std::string filepath)
         return -1;
     }
 
-    // seek source file
-    int fileidx = seek_file(files, filepath);
-    // handle missing source file
-    if (fileidx == -1) {
+    // seek file
+    dir_entry file = path_to_file(path_to_abs(filepath));
+    int fileidx = path_to_file_idx(filepath);
+    // handle missing file
+    if (!(file.size > (uint32_t)0)) { // check existance
         std::cout << "FS::rm(err: file \"" << filepath << "\" not found)\n";
         return -1;
     }
-    dir_entry file = files[fileidx];
     
     // save first block
     uint16_t blk = file.first_blk;
-
 
     // case: directory
     if (file.type) {
@@ -914,11 +995,14 @@ FS::append(std::string filepath1, std::string filepath2)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::append(unable to find current directory)\n";
+    // GET FILES from path parent directory
+    std::string parent_path = pop_path(path_to_abs(filepath2));
+    dir_entry parent_dir = path_to_file(parent_path);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::append(unable to find parent directory)\n";
+        return -1;
     }
+    int blockno = parent_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -934,13 +1018,12 @@ FS::append(std::string filepath1, std::string filepath2)
     }
 
     // seek file1
-    int file1idx = seek_file(files, filepath1);
-    // handle missing file1
-    if (file1idx == -1) {
+    dir_entry file1 = path_to_file(path_to_abs(filepath1));
+    // handle missing file
+    if (!(file1.size > (uint32_t)0)) { // check existance
         std::cout << "FS::append(err: file \"" << filepath1 << "\" not found)\n";
         return -1;
     }
-    dir_entry file1 = files[file1idx];
 
     // check file1 type
     if (file1.type) {
@@ -949,13 +1032,13 @@ FS::append(std::string filepath1, std::string filepath2)
     }
 
     // seek file2
-    int file2idx = seek_file(files, filepath2);
-    // handle missing file2
-    if (file2idx == -1) {
-        std::cout << "FS::append(err: file \"" << filepath2 << "\" not found)\n";
+    dir_entry file2 = path_to_file(path_to_abs(filepath2));
+    int file2idx = path_to_file_idx(filepath2);
+    // handle missing file
+    if (!(file2.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::cp(err: file \"" << filepath2 << "\" not found)\n";
         return -1;
     }
-    dir_entry file2 = files[file2idx];
 
     // check file2 type
     if (file2.type) {
@@ -1088,11 +1171,14 @@ FS::mkdir(std::string dirpath)
     disk.read(FAT_BLOCK, block);
     block_to_fat(fat, block);
 
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::mkdir(unable to find current directory)\n";
+    // GET FILES from path parent directory
+    std::string parent_path = pop_path(path_to_abs(dirpath));
+    dir_entry parent_dir = path_to_file(parent_path);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::mkdir(unable to find parent directory)\n";
+        return -1;
     }
+    int blockno = parent_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -1110,7 +1196,9 @@ FS::mkdir(std::string dirpath)
         return -1;
     }
 
-    if (is_duplicate_name(files, dirpath)) {
+    // seek file
+    dir_entry dir = path_to_file(dirpath);
+    if ((dir.size > (uint32_t)0)) { // check existance
         std::cout << "FS::mkdir(err: file or directory \"" << dirpath << "\" already exists)\n";
         return -1;
     }
@@ -1119,7 +1207,8 @@ FS::mkdir(std::string dirpath)
     dir_entry file;
 
     // strncpy with sizeof to limit string size
-    strncpy(file.file_name, dirpath.c_str(), 55); // allow names of length 55
+    std::string new_name = path_to_name(dirpath);
+    strncpy(file.file_name, new_name.c_str(), 55); // allow names of length 55
 
     // Get next free block
     int blk = free_block(fat);
@@ -1131,6 +1220,10 @@ FS::mkdir(std::string dirpath)
 
     file.type = (uint8_t)1; // Set type to file. [0=file, 1=directory]
     file.access_rights = (uint8_t)(READ + WRITE + EXECUTE); // read (0x04) + write (0x02) + execute (0x01)
+
+    // Clear block
+    block = new uint8_t [BLOCK_SIZE] {0};
+    disk.write(blk, block);
 
     // Save file
     files[fileidx] = file;
@@ -1150,63 +1243,45 @@ FS::cd(std::string dirpath)
 {
     if (DEBUG) std::cout << "FS::cd(" << dirpath << ")\n";
 
-    // handle ".."
+    // // LOAD FAT
+    // uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    // uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    // disk.read(FAT_BLOCK, block);
+    // block_to_fat(fat, block);
 
-    if (dirpath == "..") {
-        currentpath = pop_path(currentpath);
-        return 0;
+    // // GET FILES from path parent directory
+    // std::string parent_path = pop_path(path_to_abs(dirpath));
+    // dir_entry parent_dir = path_to_file(parent_path);
+    // if (!(parent_dir.size > (uint32_t)0)) { // check existance
+    //     std::cout << "FS::cd(unable to find parent directory)\n";
+    //     return -1;
+    // }
+    // int blockno = parent_dir.first_blk;
+    // dir_entry files[64];
+    // disk.read(blockno, block);
+    // block_to_files(files, block);
+
+    // file name length
+    if (dirpath.length() > 55) {
+        std::cout << "FS::cd(directory \"" << dirpath << "\" too long)\n";
+        return -1;
     }
 
-    // LOAD FAT
-    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
-    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
-    disk.read(FAT_BLOCK, block);
-    block_to_fat(fat, block);
-
-    // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::cd(unable to find current directory)\n";
+    // seek file
+    dir_entry directory = path_to_file(dirpath);
+    // handle missing file
+    if (!(directory.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::cd(file \"" << dirpath << "\" not found)\n";
+        return -1;
     }
-    dir_entry files[64];
-    disk.read(blockno, block);
-    block_to_files(files, block);
-    
 
-    // normal case
-    {
-
-        // file name length
-        if (dirpath.length() > 55) {
-            std::cout << "FS::cd(directory \"" << dirpath << "\" too long)\n";
-            return -1;
-        }
-
-        // check file exist
-        int fileno = seek_file(files, dirpath);
-        if (fileno == -1) {
-            std::cout << "FS::cd(file \"" << dirpath << "\" not found)\n";
-            return -1;
-        }
-
-        // get file
-        dir_entry directory = files[fileno];
-    
-        // check if type directory
-        uint8_t type = directory.type;
-        if (type != (uint8_t)1) { // directory (1) or file (0)
-            std::cout << "FS::cd(file \"" << dirpath << "\" not of directory type)\n";
-            return -1;
-        }
-    
-        // change pwd
-        if (currentpath == "/") {
-            currentpath = currentpath + dirpath;
-        } else {
-            currentpath = currentpath + '/' + dirpath;
-        }
-
+    // check if type directory
+    if (directory.type != (uint8_t)1) { // if file
+        std::cout << "FS::cd(file \"" << dirpath << "\" not of directory type)\n";
+        return -1;
     }
+
+    currentpath = path_to_abs(dirpath);
 
     return 0;
 }
