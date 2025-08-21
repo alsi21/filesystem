@@ -114,6 +114,12 @@ bool dir_empty(dir_entry *files) {
     return true;
 }
 
+std::string path_to_name(std::string path) {
+    // Need to handle when path ends with ".."??
+    std::vector<std::string> tokens = split(path, '/');
+    return tokens.back();
+}
+
 // Function for splitting path into directories and file
 std::vector<std::string> split(std::string path, char delimiter) {
     if (DEBUG) std::cout << "split()\n";
@@ -155,11 +161,26 @@ std::string join(std::vector<std::string> tokens, char delimiter) {
     return path;
 }
 
-// Function for getting blockno from path
-int 
-FS::path_to_blockno(std::string path) {
+// Function for getting file from path
+dir_entry 
+FS::path_to_file(std::string ipath) {
 
-    if (DEBUG) std::cout << "path_to_blockno(" << path << ")\n";
+    if (DEBUG) std::cout << "FS::path_to_file(" << ipath << ")\n";
+    
+    std::string path;
+    std::string working_path = "/";
+    if (ipath == "") {
+        path = currentpath;
+    }
+    // case: absolute path
+    else if (ipath.at(0) == '/'){
+        path = ipath;
+    }
+    // case: relative path
+    else {
+        path = currentpath == "/" ? currentpath + ipath : currentpath + "/" + ipath;
+    }
+    if (DEBUG) std::cout << "path_to_file(" << path << ")\n";
     
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
 
@@ -170,39 +191,83 @@ FS::path_to_blockno(std::string path) {
     dir_entry root[64];
     disk.read(ROOT_BLOCK, block);
     block_to_files(root, block);
-    
+
     // iterate over directories
     dir_entry files[64];
+    dir_entry file;
     int blockno = 0; // TODO may need to include pass -1 and catch in certain cases
-    memcpy(files, root, BLOCK_SIZE);
+    memcpy(files, root, BLOCK_SIZE); // det files to root
     // for token in tokens get next directory
-    if (DEBUG) std::cout << "path_to_blockno - directory iterative loop\n";
-    if (DEBUG) std::cout << "path_to_blockno - tokens size: " << tokens.size() << "\n";
+    if (DEBUG) std::cout << "path_to_file - directory iterative loop\n";
+    if (DEBUG) std::cout << "path_to_file - tokens size: " << tokens.size() << "\n";
     for (size_t i = 0; i < tokens.size(); i++) {
-        // check if directory exist in files
-        // file name length
-        if (tokens[i].length() > 55) {
-            std::cout << "FS::path_to_blockno(err: path token \"" << tokens[i] << "\" too long)\n";
-            return -1;
+
+        // case: ".."
+        if (tokens[i] == "..") {
+            if (DEBUG) std::cout << "path_to_file(token case: \"..\")\n";
+            // if current is root throw error
+            if (working_path == "/") {
+                std::cout << "path_to_file(err: cannot get parent of root)\n";
+                return dir_entry{};
+            }
+
+            // recursive fetching of parent
+            std::string parent_path = pop_path(working_path);
+            dir_entry parent_directory = path_to_file(parent_path);
+
+            // load parent directory files
+            disk.read(blockno, block);
+            block_to_files(files, block);
+
+            // update working path
+            working_path = parent_path;
+            if (DEBUG) std::cout << "path_to_file - working_path = " << working_path << "\n";
         }
-        int fileno = seek_file(files, tokens[i]);
-        if (DEBUG) std::cout << "path_to_blockno - fileno = " << fileno << "\n";
-        if (fileno == -1) {
-            // TODO error message could be better...
-            std::cout << "path_to_blockno(directory \"" << tokens[i] << "\" not found)\n";
-            return -1;
+        // case: normal directory name
+        else {
+            if (DEBUG) std::cout << "path_to_file(token case: \"" << tokens[i] << "\")\n";
+            // check if directory exist in files
+            // file name length
+            if (tokens[i].length() > 55) {
+                std::cout << "FS::path_to_file(err: path token \"" << tokens[i] << "\" too long)\n";
+                return dir_entry{};
+            }
+            int fileno = seek_file(files, tokens[i]);
+            if (DEBUG) std::cout << "path_to_file - fileno = " << fileno << "\n";
+            if (fileno == -1) {
+                // TODO error message could be better...
+                std::cout << "FS::path_to_file(directory or file \"" << tokens[i] << "\" not found)\n";
+                // maybe loop over tokens and print?
+                return dir_entry{};
+            }
+
+            // get blockno
+            file = files[fileno];
+            blockno = (int)file.first_blk;
+            if (DEBUG) std::cout << "path_to_file - file_name = " << file.file_name << "\n";
+            if (DEBUG) std::cout << "path_to_file - blockno = " << blockno << "\n";
+            
+            // if more iterations, prepare files for next
+            if (i < tokens.size() - 1) {
+                // load directory file
+                disk.read(blockno, block);
+                block_to_files(files, block);
+            }
+            
+            // update working path
+            // working_path = working_path + tokens[i] + "/";
+            working_path = working_path == "/" ? working_path + tokens[i] : working_path + "/" + tokens[i];
+            if (DEBUG) std::cout << "path_to_file - working_path = " << working_path << "\n";
         }
-        
-        // get blockno
-        dir_entry file = files[fileno];
-        blockno = (int)file.first_blk;
-        if (DEBUG) std::cout << "path_to_blockno - blockno = " << blockno << "\n";
-        
-        // load directory file
-        disk.read(blockno, block);
-        block_to_files(files, block);
     }
-    return blockno;
+
+    if (file.type) {
+        if (DEBUG) std::cout << "returning directory: " << file.file_name << "\n";   
+    } else {
+        if (DEBUG) std::cout << "returning file: " << file.file_name << "\n";   
+    }
+
+    return file;
 }
 
 // Function to be used when seeking parent directory
@@ -246,6 +311,11 @@ FS::create(std::string filepath)
 {
     if (DEBUG) std::cout << "FS::create(" << filepath << ")\n";
     
+    if (filepath == "..") {
+        std::cout << "FS::create(filepath \"..\" is not valid)\n";
+        return -1;
+    }
+
     // LOAD FAT
     uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
     uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
@@ -253,10 +323,12 @@ FS::create(std::string filepath)
     block_to_fat(fat, block);
 
     // GET FILES from current directory
-    int blockno = path_to_blockno(currentpath);
-    if (blockno == -1) {
-        std::cout << "FS::create(unable to find current directory)\n";
+    std::string parent_path = filepath + '/' + "..";
+    dir_entry parent_dir = path_to_file(parent_path);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::create(unable to find parent directory)\n";
     }
+    int blockno = parent_dir.first_blk;
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
@@ -283,7 +355,8 @@ FS::create(std::string filepath)
     dir_entry file;
 
     // strncpy with sizeof to limit string size
-    strncpy(file.file_name, filepath.c_str(), 55); // allow names of length 55
+    std::string name = path_to_name(filepath);
+    strncpy(file.file_name, name.c_str(), 55); // allow names of length 55
 
     // Get next free block
     int blk = free_block(fat);

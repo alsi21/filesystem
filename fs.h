@@ -75,8 +75,8 @@ public:
     // file <filepath> to <accessrights>.
     int chmod(std::string accessrights, std::string filepath);
 
-    // helper function for computing blockno from path
-    int path_to_blockno(std::string path);
+    // helper functions for computing files from path
+    dir_entry path_to_file(std::string path);
 };
 
 #endif // __FS_H__

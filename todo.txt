@@ -158,3 +158,51 @@ Bugs:
 
 TODO:
     [ ] remove uneccesary fat load and save
+
+Task 4:
+
+Overall:
+    [ ] relative path
+    [ ] absolute path
+    [ ] always treat ".." as the parent directory
+
+create:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+cat:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+ls:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+cp:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+mv:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+rm:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+append:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+mkdir:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+cd:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
+pwd:
+    [ ] relative path compliance
+    [ ] absolute path compliance
+    [ ] ".." compliance
