@@ -63,6 +63,30 @@ bool is_duplicate_name(dir_entry *files, std::string filepath) {
     return false;
 }
 
+std::string ch_format(uint8_t acsr) {
+    std::string out;
+    out += acsr & 0x04 ? "r" : "-";
+    out += acsr & 0x02 ? "w" : "-";
+    out += acsr & 0x01 ? "x" : "-";
+    return out;
+}
+
+bool ch_read(dir_entry file) {
+    if (file.access_rights & 0x04) return true;
+    return false;
+}
+
+bool ch_write(dir_entry file) {
+    if (file.access_rights & 0x02) return true;
+    return false;
+}
+
+bool ch_execute(dir_entry file) {
+    if (file.access_rights & 0x01) return true;
+    return false;
+}
+
+
 int free_block(uint16_t *fat) {
     // return the first free fat block
     for (int i = 0; i < BLOCK_SIZE / 2; i++) {
@@ -383,8 +407,8 @@ FS::create(std::string filepath)
 {
     if (DEBUG) std::cout << "FS::create(" << filepath << ")\n";
     
-    if (filepath == "..") {
-        std::cout << "FS::create(filepath \"..\" is not valid)\n";
+    if (path_to_name(filepath) == "..") {
+        std::cout << "FS::create(filename \"..\" is not valid)\n";
         return -1;
     }
 
@@ -405,6 +429,11 @@ FS::create(std::string filepath)
     dir_entry files[64];
     disk.read(blockno, block);
     block_to_files(files, block);
+
+    if (!ch_write(parent_dir)) {
+        std::cout << "FS::create(err: no write access to parent directory)\n";
+        return -1;
+    }
 
     // Find space for file in directory
     int fileidx = free_file(files);
@@ -486,7 +515,7 @@ FS::create(std::string filepath)
     }
 
     file.type = (uint8_t)0; // Set type to file. [0=file, 1=directory]
-    file.access_rights = (uint8_t)(READ + WRITE + EXECUTE); // read (0x04) + write (0x02) + execute (0x01)
+    file.access_rights = (uint8_t)(READ + WRITE); // read (0x04) + write (0x02) + execute (0x01)
 
     // Save file
     files[fileidx] = file;
@@ -543,6 +572,11 @@ FS::cat(std::string filepath)
         std::cout << "FS::cat(err: file \"" << filepath << "\" of type directory)\n";
         return -1;
     }
+    
+    if (!ch_read(file)) {
+        std::cout << "FS::cat(err: no read access to \"" << filepath << "\")\n";
+        return -1;
+    }
 
     // get first block
     uint16_t blk = file.first_blk;
@@ -591,6 +625,7 @@ FS::ls()
     std::cout << std::left
         << std::setw(58) << "name"
         << std::setw(7) << "type"
+        << std::setw(14) << "accessrights"
         << std::setw(12) << "size"
         << "\n";
     for (int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
@@ -602,6 +637,7 @@ FS::ls()
             std::cout << std::left
                 << std::setw(58) << file.file_name
                 << std::setw(7) << type
+                << std::setw(14) << ch_format(file.access_rights)
                 << std::setw(12) << size
                 << "\n";
         }
@@ -658,6 +694,11 @@ FS::cp(std::string sourcepath, std::string destpath)
         std::cout << "FS::cp(err: file \"" << sourcepath << "\" of type directory)\n";
         return -1;
     }
+    
+    // if (!ch_read(sourcefile)) {
+    //     std::cout << "FS::cp(err: no read rights for file \"" << sourcepath << "\")\n";
+    //     return -1;    
+    // }
 
     // seek destination
     dir_entry directory = path_to_file(path_to_abs(destpath));
@@ -668,6 +709,12 @@ FS::cp(std::string sourcepath, std::string destpath)
             std::cout << "FS::cp(err: file \"" << destpath << "\" already exists)\n";
             return -1;
         } else { // if directory
+
+            // if (!ch_write(directory)) {
+            //     std::cout << "FS::cp(err: no write rights for directory \"" << destpath << "\")\n";
+            //     return -1;
+            // }
+            
             // swap files
             blockno = directory.first_blk;
             disk.read(blockno, block);
@@ -758,7 +805,7 @@ FS::cp(std::string sourcepath, std::string destpath)
         }
 
         destfile.type = (uint8_t)0; // Set type to file. [0=file, 1=directory]
-        destfile.access_rights = (uint8_t)(READ + WRITE + EXECUTE); // read (0x04) + write (0x02) + execute (0x01)
+        destfile.access_rights = sourcefile.access_rights; // read (0x04) + write (0x02) + execute (0x01)
 
         // Save file
         files[destidx] = destfile;
@@ -1031,6 +1078,11 @@ FS::append(std::string filepath1, std::string filepath2)
         return -1;
     }
 
+    if (!ch_read(file1)) {
+        std::cout << "FS::append(err: no read access to file \"" << filepath1 << "\")\n";
+        return -1;
+    }
+
     // seek file2
     dir_entry file2 = path_to_file(path_to_abs(filepath2));
     int file2idx = path_to_file_idx(filepath2);
@@ -1043,6 +1095,11 @@ FS::append(std::string filepath1, std::string filepath2)
     // check file2 type
     if (file2.type) {
         std::cout << "FS::append(err: file \"" << filepath2 << "\" of type directory)\n";
+        return -1;
+    }
+
+    if (!ch_write(file2)) {
+        std::cout << "FS::append(err: no write access to file \"" << filepath2 << "\")\n";
         return -1;
     }
 
@@ -1303,6 +1360,48 @@ FS::pwd()
 int
 FS::chmod(std::string accessrights, std::string filepath)
 {
-    std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+    if (DEBUG) std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+
+    // LOAD FAT
+    uint16_t *fat = new uint16_t [BLOCK_SIZE / 2] {0};
+    uint8_t *block = new uint8_t [BLOCK_SIZE] {0};
+    disk.read(FAT_BLOCK, block);
+    block_to_fat(fat, block);
+
+    // GET FILES from path parent directory
+    std::string parent_path = pop_path(path_to_abs(filepath));
+    dir_entry parent_dir = path_to_file(parent_path);
+    if (!(parent_dir.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::chmod(unable to find parent directory)\n";
+        return -1;
+    }
+    int blockno = parent_dir.first_blk;
+    dir_entry files[64];
+    disk.read(blockno, block);
+    block_to_files(files, block);
+
+    // file length
+    if (filepath.length() > 55) {
+        std::cout << "FS::chmod(err: file \"" << filepath << "\" too long)\n";
+        return -1;
+    }
+
+    // seek file
+    dir_entry file = path_to_file(path_to_abs(filepath));
+    if (!(file.size > (uint32_t)0)) { // check existance
+        std::cout << "FS::chmod(err: file \"" << filepath << "\" not found)\n";
+        return -1;
+    }
+    int fileidx = path_to_file_idx(path_to_abs(filepath));
+
+    // parse access rights
+    uint8_t acsr = (uint8_t)std::stoi(accessrights);
+    file.access_rights = acsr;
+
+    // Save file
+    files[fileidx] = file;
+    files_to_block(files, block);
+    disk.write(blockno, block);
+
     return 0;
 }

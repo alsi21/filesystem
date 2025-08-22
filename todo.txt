@@ -162,47 +162,78 @@ TODO:
 Task 4:
 
 Overall:
-    [ ] relative path
-    [ ] absolute path
-    [ ] always treat ".." as the parent directory
+    [X] relative path
+    [X] absolute path
+    [X] always treat ".." as the parent directory
+
+    [X] write function for isolating file name from path
+    [ ] use said function for all name errors
 
 create:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 cat:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 ls:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 cp:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 mv:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 rm:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 append:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 mkdir:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 cd:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
 pwd:
-    [ ] relative path compliance
-    [ ] absolute path compliance
-    [ ] ".." compliance
+    [X] relative path compliance
+    [X] absolute path compliance
+    [X] ".." compliance
+
+Task 5:
+
+Overall:
+    [ ] fix all path prints to be absolute
+
+chmod:
+    [X] chmod update file rights
+create:
+    [X] check file access rights
+cat:
+    [X] check file access rights
+ls:
+    [X] check file access rights
+cp:
+    [X] check file access rights
+mv:
+    [X] check file access rights
+rm:
+    [X] check file access rights
+append:
+    [X] check file access rights
+mkdir:
+    [X] check file access rights
+cd:
+    [X] check file access rights
+pwd:
+    [X] check file access rights
