@@ -695,10 +695,10 @@ FS::cp(std::string sourcepath, std::string destpath)
         return -1;
     }
     
-    // if (!ch_read(sourcefile)) {
-    //     std::cout << "FS::cp(err: no read rights for file \"" << sourcepath << "\")\n";
-    //     return -1;    
-    // }
+    if (!ch_read(sourcefile)) {
+        std::cout << "FS::cp(err: no read rights for file \"" << sourcepath << "\")\n";
+        return -1;    
+    }
 
     // seek destination
     dir_entry directory = path_to_file(path_to_abs(destpath));
@@ -710,10 +710,10 @@ FS::cp(std::string sourcepath, std::string destpath)
             return -1;
         } else { // if directory
 
-            // if (!ch_write(directory)) {
-            //     std::cout << "FS::cp(err: no write rights for directory \"" << destpath << "\")\n";
-            //     return -1;
-            // }
+            if (!ch_write(directory)) {
+                std::cout << "FS::cp(err: no write rights for directory \"" << destpath << "\")\n";
+                return -1;
+            }
             
             // swap files
             blockno = directory.first_blk;
@@ -886,6 +886,10 @@ FS::mv(std::string sourcepath, std::string destpath)
             std::cout << "FS::mv(err: file \"" << destpath << "\" already exists)\n";
             return -1;
         } else { // if directory, move file
+            if (!ch_write(directory)) {
+                std::cout << "FS::cp(err: no write rights for directory \"" << destpath << "\")\n";
+                return -1;
+            }
             // swap files
             blockno = directory.first_blk;
             disk.read(blockno, block);
